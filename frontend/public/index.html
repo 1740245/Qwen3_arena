@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poké-Adventure Trader</title>
+    <base href="/" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="gba-shell">
+      <header class="status-top">
+        <div class="title-block">
+          <h1>Poké-Adventure Trader</h1>
+          <p id="trainer-name">Trainer ...</p>
+        </div>
+        <div class="status-meters">
+          <div class="energy-meter" aria-label="Trainer energy bar">
+            <div class="energy-header">
+              <span class="label">Energy</span>
+              <span id="energy-caption" class="energy-caption">HP --/--</span>
+            </div>
+            <div class="energy-bar">
+              <div id="energy-fill" class="energy-fill"></div>
+            </div>
+          </div>
+          <div class="guard-tiles">
+            <span id="cooldown-chip" class="guard-chip">Cooldown: --</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="screen-grid">
+        <section class="panel roster">
+          <div class="panel-heading">
+            <h2>Adventure Roster</h2>
+            <button id="refresh-roster" class="sprite-button">Refresh Roster</button>
+          </div>
+          <div id="roster-grid" class="roster-grid"></div>
+        </section>
+
+        <section class="panel encounter">
+          <h2>Wild Encounter</h2>
+          <form id="encounter-form" class="encounter-panel" autocomplete="off" novalidate>
+            <div class="group">
+              <label class="field-label" for="species-select">Pokémon</label>
+              <select id="species-select"></select>
+            </div>
+
+            <div class="group">
+              <span class="field-label">Action</span>
+              <div class="encounter-actions action-row" role="group" aria-label="Encounter action">
+                <button type="button" data-action="throw_pokeball" class="btn action action-btn active">THROW</button>
+                <button type="button" data-action="release_pokemon" class="btn action action-btn">RELEASE</button>
+                <button type="button" data-action="run_away" class="btn action action-btn">RUN</button>
+              </div>
+              <input type="hidden" id="action-input" value="throw_pokeball" />
+            </div>
+
+            <div class="group lv-control">
+              <label class="field-label" for="level-slider">Encounter Level</label>
+              <div class="level-row">
+                <input type="range" id="level-slider" min="20" max="20" value="20" step="1" />
+                <span id="level-indicator" class="level-indicator slider-label">LV20</span>
+              </div>
+            </div>
+
+            <div class="group">
+              <span class="field-label">Size Presets</span>
+              <div class="size-presets" role="group">
+                <button type="button" class="btn size-btn" data-hp="50" data-preset="hp50">HP 50</button>
+                <button type="button" class="btn size-btn" data-hp="100" data-preset="hp100">HP 100</button>
+                <button type="button" class="btn size-btn" data-hp="150" data-preset="hp150">HP 150</button>
+              </div>
+              <small class="helper" id="size-helper"></small>
+            </div>
+
+            <div class="group">
+              <label class="field-label" for="strength-input">Poké Ball Strength</label>
+              <input type="number" id="strength-input" min="0" step="any" inputmode="decimal" value="0.1" />
+            </div>
+
+            <div class="group">
+              <label class="field-label" for="order-style-select">Order Style</label>
+              <select id="order-style-select">
+                <option value="market">Quick Throw</option>
+                <option value="limit">Aim Carefully</option>
+              </select>
+            </div>
+
+            <div class="group">
+              <label class="field-label" for="price-input">Sparkle (Limit)</label>
+              <input
+                type="text"
+                id="price-input"
+                placeholder="Optional"
+                inputmode="decimal"
+                data-role="price-input"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="group stop-loss-group escape-rope" id="stop-loss-group" hidden>
+              <span class="field-label">Escape Rope</span>
+              <div class="mode-row" role="group" aria-label="Escape Rope mode">
+                <button type="button" class="btn mode-btn active" data-sl-mode="price">Anchor</button>
+                <button type="button" class="btn mode-btn" data-sl-mode="percent">Distance (%)</button>
+              </div>
+              <div class="sl-input">
+                <input
+                  type="text"
+                  id="stop-loss-input"
+                  placeholder="Set Anchor"
+                  inputmode="decimal"
+                  data-role="price-input"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="sl-trigger">
+                <label class="field-label" for="stop-loss-trigger">Pokédex Sensor</label>
+                <select id="stop-loss-trigger">
+                  <option value="mark_price">Mark Sensor</option>
+                  <option value="last_price">Last Sensor</option>
+                </select>
+              </div>
+              <small id="stop-loss-hint" class="helper"></small>
+              <small id="stop-loss-scale" class="helper"></small>
+            </div>
+
+            <div class="confirm-wrap">
+              <button type="submit" class="btn btn-confirm" disabled>Confirm Encounter</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel journal journal-pane">
+          <h2>Adventure Journal</h2>
+          <ul id="journal-feed"></ul>
+        </section>
+
+        <section class="panel party-pane" id="partyPane">
+          <h2>Party</h2>
+          <div id="partyEmpty" class="party-empty">No Pokémon in Party.</div>
+          <div id="partyList" class="party-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast-layer"></div>
+    <script type="module" src="/main.js" defer></script>
+  </body>
+</html>
