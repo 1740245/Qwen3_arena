@@ -418,6 +418,76 @@ async def atlas_health() -> Dict[str, object]:
     }
 
 # ====================================================================================
+# Adventure / Trading endpoints
+# ====================================================================================
+
+@app.post("/api/adventure/encounter", response_model=schemas.AdventureOrderReceipt)
+async def adventure_encounter(order: schemas.EncounterOrder) -> schemas.AdventureOrderReceipt:
+    """
+    Submit a trading order (encounter).
+    Maps to the order_service.execute_encounter method.
+    """
+    try:
+        receipt = await order_service.execute_encounter(order)
+        return receipt
+    except Exception as exc:
+        logger.error(f"Encounter failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/api/adventure/journal")
+async def adventure_journal() -> Dict[str, Any]:
+    """
+    Get trade history (journal entries).
+    Returns recent fills from Hyperliquid.
+    """
+    try:
+        # Get recent fills for all symbols
+        fills = await order_service.client.list_perp_fills(symbol=None, demo_mode=False)
+
+        # Convert fills to journal entries
+        journal_entries = []
+        for fill in fills:
+            journal_entries.append({
+                "event_id": fill.get("orderId", "unknown"),
+                "timestamp": fill.get("timestamp", ""),
+                "message": f"{fill.get('side', 'unknown').upper()} {fill.get('size', '0')} {fill.get('symbol', 'unknown')} @ {fill.get('price', '0')}",
+                "badge": fill.get("side", "neutral"),
+                "payload": fill,
+            })
+
+        return {
+            "ok": True,
+            "entries": journal_entries,
+        }
+    except Exception as exc:
+        logger.error(f"Journal retrieval failed: {exc}")
+        return {
+            "ok": False,
+            "entries": [],
+            "error": str(exc),
+        }
+
+@app.get("/api/adventure/open-orders-summary")
+async def adventure_open_orders_summary() -> Dict[str, Any]:
+    """
+    Get summary of open orders grouped by species.
+    Maps to the order_service.list_open_orders_by_species method.
+    """
+    try:
+        summary = await order_service.list_open_orders_by_species()
+        return {
+            "ok": True,
+            "data": summary,
+        }
+    except Exception as exc:
+        logger.error(f"Open orders summary failed: {exc}")
+        return {
+            "ok": False,
+            "data": {},
+            "error": str(exc),
+        }
+
+# ====================================================================================
 # Frontend routes
 # ====================================================================================
 
