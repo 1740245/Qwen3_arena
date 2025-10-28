@@ -364,6 +364,7 @@ class HyperliquidClient:
             symbol = payload["symbol"]
             trigger_price = float(payload.get("triggerPrice", 0))
             size = float(payload.get("size", 0))
+            limit_price = float(payload.get("price", trigger_price))
 
             # Determine order side for stop-loss
             # If 'side' is explicitly provided, use it
@@ -377,17 +378,14 @@ class HyperliquidClient:
                 # Default to sell if no side information
                 is_buy = False
 
-            reduce_only = payload.get("reduceOnly", True)  # Stop-loss usually reduces position
-
             # Hyperliquid trigger order format
-            trigger_order = {
-                "coin": symbol,
-                "is_buy": is_buy,
-                "sz": size,
-                "limit_px": trigger_price,
-                "trigger_px": trigger_price,
-                "order_type": "stop_market",
-                "reduce_only": reduce_only,
+            # For stop-loss: trigger activates when price goes against position
+            order_type = {
+                "trigger": {
+                    "triggerPx": trigger_price,
+                    "isMarket": True,  # Execute as market order when triggered
+                    "tpsl": "sl"  # Mark as stop-loss
+                }
             }
 
             result = await asyncio.to_thread(
@@ -395,10 +393,9 @@ class HyperliquidClient:
                 symbol,
                 is_buy,
                 size,
-                trigger_price,
-                {"limit": {"tif": "Gtc"}},  # Good-til-cancelled
-                reduce_only,
-                trigger_order
+                limit_price,  # Limit price (used if isMarket=False)
+                order_type,
+                reduce_only=True  # Stop-loss always reduces position
             )
 
             logger.info("Placed stop-loss: %s trigger=%.4f size=%.4f",
@@ -532,12 +529,18 @@ class HyperliquidClient:
         try:
             symbol = payload.get("symbol", "")
             # Accept both "orderId" and "planId" for flexibility
-            order_id = payload.get("orderId") or payload.get("planId")
+            order_id_str = payload.get("orderId") or payload.get("planId")
 
-            if not order_id:
+            if not order_id_str:
                 raise ValueError("orderId or planId is required to cancel stop-loss")
 
-            # Hyperliquid cancel order by ID
+            # Convert to int as required by Hyperliquid SDK
+            try:
+                order_id = int(order_id_str)
+            except (TypeError, ValueError):
+                raise ValueError(f"Invalid order ID format: {order_id_str}")
+
+            # Hyperliquid cancel order by ID: cancel(coin, oid)
             result = await asyncio.to_thread(
                 self._exchange.cancel,
                 symbol,
@@ -552,14 +555,14 @@ class HyperliquidClient:
                     "ok": True,
                     "code": "00000",
                     "msg": "Stop-loss cancelled",
-                    "orderId": order_id,
+                    "orderId": str(order_id),
                 }
 
             return {
                 "ok": False,
                 "code": "error",
                 "msg": str(result),
-                "orderId": order_id,
+                "orderId": str(order_id),
             }
 
         except Exception as exc:
@@ -568,7 +571,7 @@ class HyperliquidClient:
                 "ok": False,
                 "code": "error",
                 "msg": str(exc),
-                "orderId": payload.get("orderId", ""),
+                "orderId": payload.get("orderId") or payload.get("planId", ""),
             }
 
     async def cancel_perp_plan_order(
@@ -595,14 +598,20 @@ class HyperliquidClient:
                 logger.info("No orderId provided, cancelling all orders for %s", symbol)
                 return await self.cancel_all_orders_by_symbol(symbol, demo_mode=demo_mode)
 
-            # Hyperliquid cancel order by ID
+            # Convert to int as required by Hyperliquid SDK
+            try:
+                order_id_int = int(order_id)
+            except (TypeError, ValueError):
+                raise ValueError(f"Invalid order ID format: {order_id}")
+
+            # Hyperliquid cancel order by ID: cancel(coin, oid)
             result = await asyncio.to_thread(
                 self._exchange.cancel,
                 symbol,
-                order_id
+                order_id_int
             )
 
-            logger.info("Cancelled plan order: %s order=%s", symbol, order_id)
+            logger.info("Cancelled plan order: %s order=%s", symbol, order_id_int)
 
             # Parse response
             if isinstance(result, dict) and result.get("status") == "ok":
@@ -610,14 +619,14 @@ class HyperliquidClient:
                     "ok": True,
                     "code": "00000",
                     "msg": "Plan order cancelled",
-                    "orderId": order_id,
+                    "orderId": str(order_id_int),
                 }
 
             return {
                 "ok": False,
                 "code": "error",
                 "msg": str(result),
-                "orderId": order_id,
+                "orderId": str(order_id_int),
             }
 
         except Exception as exc:
