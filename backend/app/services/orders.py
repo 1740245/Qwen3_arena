@@ -715,9 +715,8 @@ class AdventureOrderService:
                 continue
             symbol = symbol.upper()
 
-            # Normalize Hyperliquid symbol format (BTC-USD -> BTC) for translator
-            if symbol.endswith("-USD"):
-                symbol = symbol[:-4]
+            # Normalize Hyperliquid symbol format for translator
+            symbol = self._normalize_symbol(symbol)
 
             amount_value = self._pick_party_amount(entry)
             amount_usdt = abs(amount_value) if amount_value is not None else 0.0
@@ -790,6 +789,31 @@ class AdventureOrderService:
             return abs(size * entry_price)
 
         return None
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        """
+        Normalize exchange symbol to base format for translator lookup.
+        Strips known suffixes: -USD, -PERP, -USDT
+
+        Examples: BTC-USD -> BTC, ETH-PERP -> ETH, BTCUSDT -> BTC
+        """
+        if not isinstance(symbol, str):
+            return ""
+
+        upper = symbol.upper()
+
+        # Strip known Hyperliquid suffixes
+        if upper.endswith("-USD"):
+            return upper[:-4]
+        if upper.endswith("-PERP"):
+            return upper[:-5]
+
+        # Strip legacy Bitget suffix
+        if upper.endswith("USDT") and len(upper) > 4:
+            return upper[:-4]
+
+        return upper
 
     @staticmethod
     def _to_float(value: Any) -> Optional[float]:
@@ -2193,9 +2217,8 @@ class AdventureOrderService:
             return None
         symbol = symbol_raw.upper().strip()
 
-        # Normalize Hyperliquid symbol format (BTC-USD -> BTC) for translator
-        if symbol.endswith("-USD"):
-            symbol = symbol[:-4]
+        # Normalize Hyperliquid symbol format for translator
+        symbol = self._normalize_symbol(symbol)
 
         size = self._to_float(
             entry.get("size")

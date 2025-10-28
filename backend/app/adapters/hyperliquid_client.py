@@ -594,10 +594,10 @@ class HyperliquidClient:
 
             logger.info("Cancelled all orders for %s", symbol)
 
-            # BUG FIX #20: Hyperliquid SDK returns {"status": "ok", "response": ...} for cancel_all_orders
-            # Check actual response status before claiming success
+            # Check Hyperliquid SDK response: {"status": "ok", "response": ...}
             cancelled_count = 0
             is_success = False
+            error_msg = "Cancel rejected by exchange"
 
             if isinstance(result, dict):
                 status = result.get("status")
@@ -612,12 +612,18 @@ class HyperliquidClient:
                 else:
                     # Response exists but status != "ok" → rejection
                     error_msg = result.get("response", "Unknown error")
+                    if not isinstance(error_msg, str):
+                        error_msg = str(error_msg)
                     logger.warning("Cancel orders rejected for %s: %s", symbol, error_msg)
+            else:
+                # Non-dict response
+                error_msg = str(result) if result is not None else "No response from exchange"
+                logger.warning("Cancel orders returned non-dict for %s: %s", symbol, error_msg)
 
             return {
                 "ok": is_success,
                 "code": "00000" if is_success else "50001",
-                "msg": "Orders cancelled" if is_success else result.get("response", "Cancel rejected by exchange"),
+                "msg": "Orders cancelled" if is_success else error_msg,
                 "symbol": symbol,
                 "cancelled": cancelled_count,
             }
@@ -674,8 +680,8 @@ class HyperliquidClient:
 
             logger.info("Cancelled stop-loss: %s order=%s", symbol, order_id)
 
-            # BUG FIX #3: Parse response using result.get("ok") not result.get("status")
-            if isinstance(result, dict) and result.get("ok"):
+            # Check Hyperliquid SDK response: {"status": "ok", ...}
+            if isinstance(result, dict) and result.get("status") == "ok":
                 return {
                     "ok": True,
                     "code": "00000",
@@ -683,11 +689,11 @@ class HyperliquidClient:
                     "orderId": str(order_id),
                 }
 
-            # BUG FIX #13: Use standard error code format
+            # Cancel rejected by exchange
             return {
                 "ok": False,
-                "code": "50000",
-                "msg": str(result),
+                "code": "50001",
+                "msg": result.get("response", str(result)) if isinstance(result, dict) else str(result),
                 "orderId": str(order_id),
             }
 
@@ -744,8 +750,8 @@ class HyperliquidClient:
 
             logger.info("Cancelled plan order: %s order=%s", symbol, order_id_int)
 
-            # BUG FIX #3: Parse response using result.get("ok") not result.get("status")
-            if isinstance(result, dict) and result.get("ok"):
+            # Check Hyperliquid SDK response: {"status": "ok", ...}
+            if isinstance(result, dict) and result.get("status") == "ok":
                 return {
                     "ok": True,
                     "code": "00000",
@@ -753,11 +759,11 @@ class HyperliquidClient:
                     "orderId": str(order_id_int),
                 }
 
-            # BUG FIX #13: Use standard error code format
+            # Cancel rejected by exchange
             return {
                 "ok": False,
-                "code": "50000",
-                "msg": str(result),
+                "code": "50001",
+                "msg": result.get("response", str(result)) if isinstance(result, dict) else str(result),
                 "orderId": str(order_id_int),
             }
 
@@ -796,8 +802,17 @@ class HyperliquidClient:
 
                     fill_symbol = fill.get("coin", "")
 
-                    # Filter by symbol
-                    if fill_symbol != symbol:
+                    # Filter by symbol with normalization (strip -USD suffix)
+                    # Normalize both to base format for comparison
+                    normalized_filter = symbol.upper()
+                    if normalized_filter.endswith("-USD"):
+                        normalized_filter = normalized_filter[:-4]
+
+                    normalized_fill = fill_symbol.upper()
+                    if normalized_fill.endswith("-USD"):
+                        normalized_fill = normalized_fill[:-4]
+
+                    if normalized_fill != normalized_filter:
                         continue
 
                     # BUG FIX #26: Improve side mapping with explicit checks
