@@ -634,16 +634,27 @@ class AdventureOrderService:
 
     @staticmethod
     def _symbol_candidates(symbol: str) -> List[str]:
+        """
+        Generate candidate symbols for Hyperliquid.
+        Hyperliquid uses formats like: BTC, BTC-USD
+        Legacy Bitget used: BTC, BTC_UMCBL, BTCUSDT
+        """
         normalized = (symbol or "").upper()
         candidates: List[str] = []
         if normalized:
+            # Primary format: base symbol
             candidates.append(normalized)
-            if normalized.endswith("_UMCBL"):
-                base = normalized[:-6]
-                if base:
-                    candidates.append(base)
-            else:
-                candidates.append(f"{normalized}_UMCBL")
+
+            # Hyperliquid format: BTC-USD
+            if not normalized.endswith("-USD"):
+                candidates.append(f"{normalized}-USD")
+
+            # If already has -USD suffix, also try without
+            if normalized.endswith("-USD"):
+                base = normalized[:-4]
+                if base and base not in candidates:
+                    candidates.insert(0, base)  # Try base first
+
         seen: set[str] = set()
         ordered: List[str] = []
         for candidate in candidates:

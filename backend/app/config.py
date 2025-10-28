@@ -255,10 +255,18 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context: object) -> None:
+        # Check both Bitget (legacy) and Hyperliquid credentials
+        has_bitget = bool(self.bitget_api_key and self.bitget_api_secret and self.bitget_passphrase)
+        has_hyperliquid = bool(
+            self.hyperliquid_wallet_address
+            and self.hyperliquid_wallet_address.startswith("0x")
+            and self.hyperliquid_private_key
+            and self.hyperliquid_private_key.startswith("0x")
+        )
+
+        # Accept either Bitget OR Hyperliquid credentials
         self._credential_flags: Dict[str, bool] = {
-            "api_key": bool(self.bitget_api_key),
-            "secret": bool(self.bitget_api_secret),
-            "passphrase": bool(self.bitget_passphrase),
+            "exchange": has_bitget or has_hyperliquid,
         }
         if isinstance(self.pinned_perp_bases, str):
             bases = [item.strip().upper() for item in self.pinned_perp_bases.split(",") if item.strip()]
@@ -313,13 +321,13 @@ class Settings(BaseSettings):
         if self._trading_locked and not getattr(self, "_trading_warning_logged", False):
             missing = ", ".join(self.missing_credentials()) or "credentials"
             logger.warning(
-                "System: live trading requires Bitget credentials (%s). Trading endpoints are disabled until keys are provided or demo mode is enabled.",
+                "System: live trading requires exchange credentials (%s). Trading endpoints are disabled until keys are provided or demo mode is enabled.",
                 missing,
             )
             self._trading_warning_logged = True
 
     def has_api_credentials(self) -> bool:
-        """Return True if a full credential set is configured (Bitget legacy)."""
+        """Return True if any exchange credential set is configured (Bitget OR Hyperliquid)."""
         return all(self._credential_flags.values())
 
     def has_hyperliquid_credentials(self) -> bool:
