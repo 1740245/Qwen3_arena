@@ -1356,6 +1356,10 @@ class AdventureOrderService:
         *,
         demo_mode: bool,
     ) -> str:
+        # Validate profile exists
+        if not prep.profile:
+            raise ValueError("Cannot embed stop-loss: profile is missing")
+
         meta = prep.contract_meta or await self._get_contract_meta(prep.profile.perp_symbol if prep.profile else None)
         if meta is None:
             meta = DEFAULT_CONTRACT_META
@@ -1411,17 +1415,23 @@ class AdventureOrderService:
         return formatted_stop
 
     def _format_price(self, profile, route: str, price: float) -> str:
+        if not profile:
+            # Default to 2 decimal places if profile is missing
+            return f"{price:.2f}"
         if route == "perp" and profile.perp_pip_precision is not None:
             precision = profile.perp_pip_precision
         else:
-            precision = profile.pip_precision
+            precision = profile.pip_precision if profile.pip_precision is not None else 2
         return f"{price:.{precision}f}"
 
     def _format_size(self, route: str, profile, size: float) -> str:
+        if not profile:
+            # Default to 4 decimal places if profile is missing
+            return f"{size:.4f}"
         if route == "perp" and profile.perp_size_precision is not None:
             precision = profile.perp_size_precision
         else:
-            precision = profile.size_precision
+            precision = profile.size_precision if profile.size_precision is not None else 4
         return f"{size:.{precision}f}"
 
     async def build_order_preview(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1565,9 +1575,21 @@ class AdventureOrderService:
         existing = self._pending_escape_tasks.pop(pending.client_oid, None)
         if existing:
             existing.cancel()
+            # Wait for cancellation to complete to avoid race condition
+            try:
+                asyncio.create_task(self._wait_for_task_cancellation(existing))
+            except Exception:
+                pass  # Task may already be done
         self._pending_escape_meta[pending.client_oid] = pending
         task = asyncio.create_task(self._adjust_escape_rope(pending))
         self._pending_escape_tasks[pending.client_oid] = task
+
+    async def _wait_for_task_cancellation(self, task: asyncio.Task) -> None:
+        """Wait for a task to finish cancellation."""
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass  # Expected - task was cancelled or timed out
 
     async def _adjust_escape_rope(self, pending: PendingEscapeRope) -> None:
         client_oid = pending.client_oid
@@ -1587,15 +1609,19 @@ class AdventureOrderService:
                         return
                     if pending.sensor_price is not None:
                         delta = abs(final_stop - pending.sensor_price)
-                        precision = pending.prep.profile.pip_precision
-                        min_tick = 10 ** -precision if precision >= 0 else 0.0
-                        if delta < min_tick:
-                            self._append_log(
-                                message="Escape Rope set using sensor anchor.",
-                                badge=None,
-                                payload={"clientOid": client_oid, "stage": "escape-fine-tune"},
-                            )
-                            return
+                        # Check if profile exists before accessing pip_precision
+                        if pending.prep.profile is None:
+                            logger.warning("Profile is None, skipping tick check")
+                        else:
+                            precision = pending.prep.profile.pip_precision
+                            min_tick = 10 ** -precision if precision >= 0 else 0.0
+                            if delta < min_tick:
+                                self._append_log(
+                                    message="Escape Rope set using sensor anchor.",
+                                    badge=None,
+                                    payload={"clientOid": client_oid, "stage": "escape-fine-tune"},
+                                )
+                                return
                     await self._replace_escape_rope(pending, final_stop)
                     self._append_log(
                         message="Escape Rope fine-tuned to your Distance (%) anchor.",

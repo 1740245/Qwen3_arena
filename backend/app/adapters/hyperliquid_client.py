@@ -261,11 +261,25 @@ class HyperliquidClient:
             order_type = payload.get("orderType", "market")
             reduce_only = payload.get("reduceOnly", False)
 
+            # Validate required fields
+            if size <= 0:
+                raise ValueError(f"Order size must be positive, got {size}")
+
+            # For limit orders, price is required
+            if order_type == "limit":
+                if "price" not in payload or payload["price"] is None:
+                    raise ValueError("Limit orders require 'price' field")
+                limit_px = float(payload["price"])
+                if limit_px <= 0:
+                    raise ValueError(f"Limit price must be positive, got {limit_px}")
+            else:
+                limit_px = None
+
             order_request = {
                 "coin": symbol,
                 "is_buy": is_buy,
                 "sz": size,
-                "limit_px": float(payload.get("price", 0)) if order_type == "limit" else None,
+                "limit_px": limit_px,
                 "order_type": {"limit": "limit", "market": "market"}.get(order_type, "market"),
                 "reduce_only": reduce_only,
             }
@@ -334,7 +348,14 @@ class HyperliquidClient:
                 return self._wrap_data({"status": "no_position", "symbol": symbol})
 
             # Place opposite order to close
-            size = abs(float(target_position.get("size", 0)))
+            size = float(target_position.get("size", 0))
+
+            # Validate size before attempting to close
+            if size == 0:
+                logger.warning("Position size is 0 for %s, nothing to close", symbol)
+                return self._wrap_data({"status": "no_position", "symbol": symbol})
+
+            size = abs(size)
             is_buy = target_position.get("holdSide") == "short"  # Buy to close short, sell to close long
 
             # Hyperliquid SDK market_close(coin, sz=None, px=None, slippage=0.05, cloid=None)
