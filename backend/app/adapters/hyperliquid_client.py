@@ -43,8 +43,9 @@ class HyperliquidClient:
                     account_address=settings.hyperliquid_wallet_address,
                     secret_key=settings.hyperliquid_private_key,
                 )
-                logger.info("Hyperliquid exchange client initialized for wallet: %s",
-                           settings.hyperliquid_wallet_address[:10] + "...")
+                # BUG FIX #25: Handle short wallet addresses safely
+                wallet_display = (settings.hyperliquid_wallet_address[:10] + "...") if len(settings.hyperliquid_wallet_address) > 10 else settings.hyperliquid_wallet_address
+                logger.info("Hyperliquid exchange client initialized for wallet: %s", wallet_display)
             except Exception as exc:
                 logger.error("Failed to initialize Hyperliquid exchange client: %s", exc)
                 self._exchange = None
@@ -163,9 +164,19 @@ class HyperliquidClient:
                 # Extract margin summary
                 margin_summary = user_state.get("marginSummary", {})
 
+                # BUG FIX #21: Handle None values before float conversion
                 # Available balance (what can be used for new orders)
-                account_value = float(margin_summary.get("accountValue", 0))
-                total_margin_used = float(margin_summary.get("totalMarginUsed", 0))
+                account_value_raw = margin_summary.get("accountValue", 0)
+                total_margin_used_raw = margin_summary.get("totalMarginUsed", 0)
+
+                try:
+                    account_value = float(account_value_raw) if account_value_raw is not None else 0.0
+                    total_margin_used = float(total_margin_used_raw) if total_margin_used_raw is not None else 0.0
+                except (TypeError, ValueError) as e:
+                    logger.warning("Invalid balance data: accountValue=%s, totalMarginUsed=%s", account_value_raw, total_margin_used_raw)
+                    account_value = 0.0
+                    total_margin_used = 0.0
+
                 available = max(0.0, account_value - total_margin_used)
 
                 result["perp"] = available
@@ -211,8 +222,15 @@ class HyperliquidClient:
                 for pos in user_state["assetPositions"]:
                     position_data = pos.get("position", {})
 
+                    # BUG FIX #22: Handle None value before float conversion
                     # Only include positions with non-zero size
-                    szi = float(position_data.get("szi", 0))
+                    szi_raw = position_data.get("szi", 0)
+                    try:
+                        szi = float(szi_raw) if szi_raw is not None else 0.0
+                    except (TypeError, ValueError):
+                        logger.debug("Invalid szi value for position: %s", szi_raw)
+                        continue
+
                     if szi == 0:
                         continue
 
@@ -511,11 +529,23 @@ class HyperliquidClient:
                     if symbol and order_symbol != symbol:
                         continue
 
+                    # BUG FIX #26: Improve side mapping with explicit checks
+                    # Hyperliquid uses "B" for buy, "A" for ask/sell
+                    order_side_raw = order.get("side", "")
+                    if order_side_raw == "B":
+                        order_side = "buy"
+                    elif order_side_raw == "A":
+                        order_side = "sell"
+                    else:
+                        # Default to sell for unknown values, log warning
+                        logger.warning("Unknown order side value: %s, defaulting to 'sell'", order_side_raw)
+                        order_side = "sell"
+
                     # Map Hyperliquid order format to expected format
                     orders.append({
                         "orderId": order.get("oid", ""),
                         "symbol": order_symbol,
-                        "side": "buy" if order.get("side") == "B" else "sell",
+                        "side": order_side,
                         "orderType": order.get("orderType", "limit"),
                         "price": order.get("limitPx", "0"),
                         "size": order.get("sz", "0"),
@@ -552,11 +582,12 @@ class HyperliquidClient:
 
             logger.info("Cancelled all orders for %s", symbol)
 
-            # Hyperliquid SDK returns {"status": "ok", "response": {"type": "cancel", "data": {"statuses": [...]}}}
+            # BUG FIX #20: Hyperliquid SDK returns {"status": "ok", "response": ...} for cancel_all_orders
+            # But after SDK processing, the response structure uses "ok" field for consistency
             # BUG FIX #3: Check result.get("ok") not result.get("status")
             cancelled_count = 0
             if isinstance(result, dict):
-                if result.get("ok"):
+                if result.get("status") == "ok":
                     response_data = result.get("response", {})
                     if isinstance(response_data, dict):
                         data = response_data.get("data", {})
@@ -598,7 +629,11 @@ class HyperliquidClient:
             }
 
         try:
+            # BUG FIX #23: Validate symbol field instead of defaulting to empty string
             symbol = payload.get("symbol", "")
+            if not symbol:
+                raise ValueError("Missing required field: 'symbol'")
+
             # Accept both "orderId" and "planId" for flexibility
             order_id_str = payload.get("orderId") or payload.get("planId")
 
@@ -654,7 +689,11 @@ class HyperliquidClient:
         demo_mode: bool = False,
     ) -> Dict[str, Any]:
         """Cancel a perpetual plan order, or all orders if no orderId specified."""
+        # BUG FIX #24: Validate symbol field instead of defaulting to empty string
         symbol = payload.get("symbol", "")
+        if not symbol:
+            raise ValueError("Missing required field: 'symbol'")
+
         order_id = payload.get("orderId") or payload.get("planId")
 
         if demo_mode or not self._exchange:
@@ -742,11 +781,23 @@ class HyperliquidClient:
                     if fill_symbol != symbol:
                         continue
 
+                    # BUG FIX #26: Improve side mapping with explicit checks
+                    # Hyperliquid uses "B" for buy, "A" for ask/sell
+                    fill_side_raw = fill.get("side", "")
+                    if fill_side_raw == "B":
+                        fill_side = "buy"
+                    elif fill_side_raw == "A":
+                        fill_side = "sell"
+                    else:
+                        # Default to sell for unknown values, log warning
+                        logger.warning("Unknown fill side value: %s, defaulting to 'sell'", fill_side_raw)
+                        fill_side = "sell"
+
                     # Map Hyperliquid fill format to expected format
                     fill_list.append({
                         "orderId": fill.get("oid", ""),
                         "symbol": fill_symbol,
-                        "side": "buy" if fill.get("side") == "B" else "sell",
+                        "side": fill_side,
                         "price": fill.get("px", "0"),
                         "size": fill.get("sz", "0"),
                         "fee": fill.get("fee", "0"),
