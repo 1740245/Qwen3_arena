@@ -215,30 +215,6 @@ class PriceFeed:
                 break
         return quotes, missing
 
-    def _extract_spot_quotes(
-        self,
-        payload: object,
-        now: datetime,
-        candidates: Set[str],
-    ) -> Dict[str, PriceQuote]:
-        quotes: Dict[str, PriceQuote] = {}
-        needed = set(candidates)
-        for entry in self._iter_entries(payload):
-            symbol = entry.get("symbol")
-            if not isinstance(symbol, str):
-                continue
-            base = self._base_from_symbol(symbol)
-            if base not in needed:
-                continue
-            price = self._extract_price(entry)
-            if price is None:
-                continue
-            quotes[base] = self._build_quote(base, price, "spot", now)
-            needed.discard(base)
-            if not needed:
-                break
-        return quotes
-
     @staticmethod
     def _iter_entries(payload: object):
         if not isinstance(payload, dict):
