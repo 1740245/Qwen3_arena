@@ -577,8 +577,8 @@ class AdventureOrderService:
 
             # Parse Hyperliquid response format
             if isinstance(response, dict):
-                status = response.get("status", "")
-                if status == "ok":
+                # Hyperliquid returns {"ok": True, ...} not {"status": "ok"}
+                if response.get("ok"):
                     # Successful cancellation
                     cancelled_records.append({
                         "symbol": base_symbol,
@@ -786,7 +786,8 @@ class AdventureOrderService:
 
 
             return await self._client.place_perp_order(payload, demo_mode=demo_mode)
-        return await self._client.place_spot_order(payload, demo_mode=demo_mode)
+        # Hyperliquid only supports perpetual orders, no spot markets
+        raise ValueError(f"Unsupported order route: {route}. Hyperliquid only supports 'perp' orders.")
 
     async def _get_contract_meta(self, symbol: Optional[str]) -> ContractMeta:
         candidates = self._symbol_candidates(symbol) if symbol else []
