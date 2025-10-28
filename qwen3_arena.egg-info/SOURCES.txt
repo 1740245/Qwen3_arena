@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+backend/__init__.py
+qwen3_arena.egg-info/PKG-INFO
+qwen3_arena.egg-info/SOURCES.txt
+qwen3_arena.egg-info/dependency_links.txt
+qwen3_arena.egg-info/requires.txt
+qwen3_arena.egg-info/top_level.txt

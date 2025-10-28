@@ -251,7 +251,9 @@ app = FastAPI(
 
 logger = logging.getLogger(__name__)
 
-app.add_middleware(GatekeeperMiddleware, settings=settings)
+# GATE DISABLED: Gatekeeper middleware commented out for view-only UI
+# Uncomment this line to re-enable the passphrase gate:
+# app.add_middleware(GatekeeperMiddleware, settings=settings)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -418,6 +420,12 @@ async def atlas_health() -> Dict[str, object]:
 # ====================================================================================
 # Frontend routes
 # ====================================================================================
+
+def _frontend_index() -> FileResponse:
+    index_path = public_dir / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Playground index not found.")
+    return FileResponse(index_path)
 
 @app.get("/playground", include_in_schema=False)
 async def playground_alias() -> FileResponse:

@@ -39,10 +39,10 @@ class PendingEscapeRope:
     adventure_id: str
     client_oid: str
     stop_reference: str
-    embedded: bool = False  # Track if stop-loss was embedded in main order
     sensor_price: Optional[float]
     demo_mode: bool
     created_at: datetime
+    embedded: bool = False  # Track if stop-loss was embedded in main order
     attempts: int = 0
 
 

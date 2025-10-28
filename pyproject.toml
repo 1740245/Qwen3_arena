@@ -20,6 +20,9 @@ dev = [
     "pytest-asyncio>=0.23"
 ]
 
+[tool.setuptools]
+packages = ["backend"]
+
 [build-system]
 requires = ["setuptools>=67", "wheel"]
 build-backend = "setuptools.build_meta"
