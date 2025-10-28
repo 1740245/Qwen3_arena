@@ -232,12 +232,14 @@ class PriceFeed:
     def _base_from_symbol(symbol: str) -> Optional[str]:
         """
         Extract base symbol from market symbol.
-        Hyperliquid uses native symbols (BTC, ETH, SOL).
+        Hyperliquid returns symbols like BTC-USD, ETH-USD.
         Legacy Bitget used BTCUSDT, ETHUSDT format.
         """
         upper = symbol.upper()
-        # Hyperliquid: symbols are already base tokens
-        # Just return the symbol as-is
+        # Hyperliquid: strip -USD suffix (e.g., "BTC-USD" -> "BTC")
+        if upper.endswith("-USD"):
+            return upper[:-4]
+        # Fallback: return as-is for symbols without suffix
         return upper if upper else None
 
     @staticmethod
