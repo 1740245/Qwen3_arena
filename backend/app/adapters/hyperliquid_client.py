@@ -278,13 +278,16 @@ class HyperliquidClient:
                 "timestamp": time.time(),
             }
 
+            # Hyperliquid SDK order() method signature:
+            # order(coin, is_buy, sz, limit_px, order_type, reduce_only=False)
             result = await asyncio.to_thread(
                 self._exchange.order,
                 symbol,
                 is_buy,
                 size,
                 order_request["limit_px"],
-                order_request
+                order_request["order_type"],
+                reduce_only
             )
 
             tap_entry["status"] = 200
@@ -295,7 +298,13 @@ class HyperliquidClient:
                        "BUY" if is_buy else "SELL", symbol, size,
                        payload.get("price", "MARKET"))
 
-            return self._wrap_data(result.get("response", {}).get("data", {}))
+            # Hyperliquid SDK returns {"status": "ok", "response": {"type": "order", "data": {...}}}
+            if isinstance(result, dict) and result.get("status") == "ok":
+                response_data = result.get("response", {})
+                if isinstance(response_data, dict):
+                    data = response_data.get("data", {})
+                    return self._wrap_data(data if data else response_data)
+            return self._wrap_data(result)
 
         except Exception as exc:
             logger.error("Failed to place perp order: %s", exc)
@@ -328,15 +337,72 @@ class HyperliquidClient:
             size = abs(float(target_position.get("size", 0)))
             is_buy = target_position.get("holdSide") == "short"  # Buy to close short, sell to close long
 
-            result = await asyncio.to_thread(self._exchange.market_close, symbol, size)
+            result = await asyncio.to_thread(self._exchange.market_close, symbol)
 
             logger.info("Closed position: %s size=%.4f", symbol, size)
 
-            return self._wrap_data(result.get("response", {}).get("data", {}))
+            # Hyperliquid SDK returns {"status": "ok", "response": {"type": "order", "data": {...}}}
+            if isinstance(result, dict) and result.get("status") == "ok":
+                response_data = result.get("response", {})
+                if isinstance(response_data, dict):
+                    data = response_data.get("data", {})
+                    return self._wrap_data(data if data else response_data)
+            return self._wrap_data(result)
 
         except Exception as exc:
             logger.error("Failed to close position: %s", exc)
             raise RuntimeError(f"Close failed: {str(exc)}")
+
+    async def place_perp_stop_loss(
+        self, payload: Dict[str, Any], *, demo_mode: bool = False
+    ) -> Dict[str, Any]:
+        """Place a perpetual stop-loss order."""
+        if demo_mode or not self._exchange:
+            return self._simulate_order(payload, route="perp")
+
+        try:
+            symbol = payload["symbol"]
+            trigger_price = float(payload.get("triggerPrice", 0))
+            size = float(payload.get("size", 0))
+            is_buy = payload.get("side", "sell") == "buy"
+            reduce_only = payload.get("reduceOnly", True)  # Stop-loss usually reduces position
+
+            # Hyperliquid trigger order format
+            trigger_order = {
+                "coin": symbol,
+                "is_buy": is_buy,
+                "sz": size,
+                "limit_px": trigger_price,
+                "trigger_px": trigger_price,
+                "order_type": "stop_market",
+                "reduce_only": reduce_only,
+            }
+
+            result = await asyncio.to_thread(
+                self._exchange.order,
+                symbol,
+                is_buy,
+                size,
+                trigger_price,
+                {"limit": {"tif": "Gtc"}},  # Good-til-cancelled
+                reduce_only,
+                trigger_order
+            )
+
+            logger.info("Placed stop-loss: %s trigger=%.4f size=%.4f",
+                       symbol, trigger_price, size)
+
+            # Parse response
+            if isinstance(result, dict) and result.get("status") == "ok":
+                response_data = result.get("response", {})
+                if isinstance(response_data, dict):
+                    data = response_data.get("data", {})
+                    return self._wrap_data(data if data else response_data)
+            return self._wrap_data(result)
+
+        except Exception as exc:
+            logger.error("Failed to place stop-loss: %s", exc)
+            raise RuntimeError(f"Stop-loss failed: {str(exc)}")
 
     async def list_open_perp_orders(
         self,
@@ -349,24 +415,37 @@ class HyperliquidClient:
             return self._wrap_data([])
 
         try:
-            user_state = await asyncio.to_thread(
-                self._info.user_state,
+            # Use frontend_open_orders to get pending orders
+            open_orders = await asyncio.to_thread(
+                self._info.frontend_open_orders,
                 self._settings.hyperliquid_wallet_address
             )
 
             orders = []
-            if isinstance(user_state, dict) and "assetPositions" in user_state:
-                for asset_pos in user_state["assetPositions"]:
-                    position_symbol = asset_pos.get("position", {}).get("coin", "")
-
-                    # Filter by symbol if provided
-                    if symbol and position_symbol != symbol:
+            if isinstance(open_orders, list):
+                for order in open_orders:
+                    if not isinstance(order, dict):
                         continue
 
-                    # Get open orders for this asset
-                    # Note: Hyperliquid's user_state doesn't directly show pending orders
-                    # We would need to use the frontend_open_orders endpoint for this
-                    pass
+                    order_symbol = order.get("coin", "")
+
+                    # Filter by symbol if provided
+                    if symbol and order_symbol != symbol:
+                        continue
+
+                    # Map Hyperliquid order format to expected format
+                    orders.append({
+                        "orderId": order.get("oid", ""),
+                        "symbol": order_symbol,
+                        "side": "buy" if order.get("side") == "B" else "sell",
+                        "orderType": order.get("orderType", "limit"),
+                        "price": order.get("limitPx", "0"),
+                        "size": order.get("sz", "0"),
+                        "filledSize": order.get("szFilled", "0"),
+                        "status": "open",
+                        "reduceOnly": order.get("reduceOnly", False),
+                        "timestamp": order.get("timestamp", 0),
+                    })
 
             return self._wrap_data(orders)
 
@@ -395,12 +474,23 @@ class HyperliquidClient:
 
             logger.info("Cancelled all orders for %s", symbol)
 
+            # Hyperliquid SDK returns {"status": "ok", "response": {"type": "cancel", "data": {"statuses": [...]}}}
+            cancelled_count = 0
+            if isinstance(result, dict):
+                if result.get("status") == "ok":
+                    response_data = result.get("response", {})
+                    if isinstance(response_data, dict):
+                        data = response_data.get("data", {})
+                        if isinstance(data, dict):
+                            statuses = data.get("statuses", [])
+                            cancelled_count = len(statuses) if isinstance(statuses, list) else 0
+
             return {
                 "ok": True,
                 "code": "00000",
                 "msg": "Orders cancelled",
                 "symbol": symbol,
-                "cancelled": len(result.get("response", {}).get("data", {}).get("statuses", [])),
+                "cancelled": cancelled_count,
             }
 
         except Exception as exc:
@@ -411,6 +501,165 @@ class HyperliquidClient:
                 "msg": str(exc),
                 "symbol": symbol,
             }
+
+    async def cancel_perp_stop_loss(
+        self,
+        payload: Dict[str, Any],
+        *,
+        demo_mode: bool = False,
+    ) -> Dict[str, Any]:
+        """Cancel a perpetual stop-loss order."""
+        if demo_mode or not self._exchange:
+            return {
+                "ok": True,
+                "code": "00000",
+                "msg": "Stop-loss cancelled (demo)",
+                "orderId": payload.get("orderId", ""),
+            }
+
+        try:
+            symbol = payload.get("symbol", "")
+            order_id = payload.get("orderId")
+
+            if not order_id:
+                raise ValueError("orderId is required to cancel stop-loss")
+
+            # Hyperliquid cancel order by ID
+            result = await asyncio.to_thread(
+                self._exchange.cancel,
+                symbol,
+                order_id
+            )
+
+            logger.info("Cancelled stop-loss: %s order=%s", symbol, order_id)
+
+            # Parse response
+            if isinstance(result, dict) and result.get("status") == "ok":
+                return {
+                    "ok": True,
+                    "code": "00000",
+                    "msg": "Stop-loss cancelled",
+                    "orderId": order_id,
+                }
+
+            return {
+                "ok": False,
+                "code": "error",
+                "msg": str(result),
+                "orderId": order_id,
+            }
+
+        except Exception as exc:
+            logger.error("Failed to cancel stop-loss: %s", exc)
+            return {
+                "ok": False,
+                "code": "error",
+                "msg": str(exc),
+                "orderId": payload.get("orderId", ""),
+            }
+
+    async def cancel_perp_plan_order(
+        self,
+        payload: Dict[str, Any],
+        *,
+        demo_mode: bool = False,
+    ) -> Dict[str, Any]:
+        """Cancel a perpetual plan order."""
+        if demo_mode or not self._exchange:
+            return {
+                "ok": True,
+                "code": "00000",
+                "msg": "Plan order cancelled (demo)",
+                "orderId": payload.get("orderId", ""),
+            }
+
+        try:
+            symbol = payload.get("symbol", "")
+            order_id = payload.get("orderId")
+
+            if not order_id:
+                raise ValueError("orderId is required to cancel plan order")
+
+            # Hyperliquid cancel order by ID
+            result = await asyncio.to_thread(
+                self._exchange.cancel,
+                symbol,
+                order_id
+            )
+
+            logger.info("Cancelled plan order: %s order=%s", symbol, order_id)
+
+            # Parse response
+            if isinstance(result, dict) and result.get("status") == "ok":
+                return {
+                    "ok": True,
+                    "code": "00000",
+                    "msg": "Plan order cancelled",
+                    "orderId": order_id,
+                }
+
+            return {
+                "ok": False,
+                "code": "error",
+                "msg": str(result),
+                "orderId": order_id,
+            }
+
+        except Exception as exc:
+            logger.error("Failed to cancel plan order: %s", exc)
+            return {
+                "ok": False,
+                "code": "error",
+                "msg": str(exc),
+                "orderId": payload.get("orderId", ""),
+            }
+
+    async def list_perp_fills(
+        self,
+        symbol: str,
+        *,
+        demo_mode: bool = False,
+    ) -> Dict[str, Any]:
+        """List perpetual order fills for a symbol."""
+        if not self._settings.has_hyperliquid_credentials():
+            return self._wrap_data([])
+
+        try:
+            # Use user_fills to get fill history
+            fills = await asyncio.to_thread(
+                self._info.user_fills,
+                self._settings.hyperliquid_wallet_address
+            )
+
+            fill_list = []
+            if isinstance(fills, list):
+                for fill in fills:
+                    if not isinstance(fill, dict):
+                        continue
+
+                    fill_symbol = fill.get("coin", "")
+
+                    # Filter by symbol
+                    if fill_symbol != symbol:
+                        continue
+
+                    # Map Hyperliquid fill format to expected format
+                    fill_list.append({
+                        "orderId": fill.get("oid", ""),
+                        "symbol": fill_symbol,
+                        "side": "buy" if fill.get("side") == "B" else "sell",
+                        "price": fill.get("px", "0"),
+                        "size": fill.get("sz", "0"),
+                        "fee": fill.get("fee", "0"),
+                        "timestamp": fill.get("time", 0),
+                        "tradeId": fill.get("tid", ""),
+                    })
+
+            return self._wrap_data(fill_list)
+
+        except Exception as exc:
+            logger.error("Failed to fetch fills: %s", exc)
+            return self._wrap_data([])
 
     # ==================== HELPER METHODS ====================
 

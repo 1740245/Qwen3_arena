@@ -1320,17 +1320,8 @@ class AdventureOrderService:
         adjustments: Dict[str, Any],
     ) -> str:
         if prep.route == "spot":
-            payload: Dict[str, Any] = {
-                "symbol": prep.profile.spot_symbol,
-                "side": "sell",
-                "triggerType": order.stop_loss_trigger.value,
-                "triggerPrice": self._format_price(prep.profile, "spot", stop_price),
-                "orderType": "market",
-                "size": self._format_size("spot", prep.profile, order.pokeball_strength),
-            }
-            response = await self._client.place_spot_stop_loss(payload, demo_mode=demo_mode)
-            entry = self._first_payload_entry(response)
-            reference = entry.get("planOrderId") or entry.get("orderId")
+            # Hyperliquid only supports perpetual markets, no spot trading
+            raise ValueError("Spot stop-loss orders are not supported on Hyperliquid. Only perpetual markets are available.")
         else:
             meta = prep.contract_meta or await self._get_contract_meta(prep.profile.perp_symbol)
             formatted_stop = self._format_price(prep.profile, prep.route, stop_price)
@@ -1535,9 +1526,8 @@ class AdventureOrderService:
     ) -> float | None:
         try:
             if prep.route == "spot":
-                ticker = await self._client.list_spot_tickers()
-                data = self._payload_entries(ticker)
-                symbol = prep.profile.spot_symbol
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot tickers are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 ticker = await self._client.list_perp_tickers()
                 data = self._payload_entries(ticker)
@@ -1637,7 +1627,8 @@ class AdventureOrderService:
         )
         try:
             if pending.prep.route == "spot":
-                fills = await self._client.list_fills(symbol)
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot fills are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 fills = await self._client.list_perp_fills(symbol, demo_mode=pending.demo_mode)
         except Exception:
@@ -1679,13 +1670,8 @@ class AdventureOrderService:
             return
         try:
             if pending.prep.route == "spot":
-                await self._client.cancel_spot_plan_order(
-                    {
-                        "symbol": pending.prep.profile.spot_symbol,
-                        "planOrderId": pending.stop_reference,
-                    },
-                    demo_mode=pending.demo_mode,
-                )
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot plan orders are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 payload = {
                     "symbol": pending.prep.profile.perp_symbol,
@@ -1937,17 +1923,11 @@ class AdventureOrderService:
         raise ValueError("Professor Elm: price data not available right now.")
 
     async def _fetch_mark_from_exchange(self, base: str, route: str) -> Optional[float]:
-        fetchers = (
-            [
-                (self._client.list_perp_tickers, "markPrice"),
-                (self._client.list_spot_tickers, None),
-            ]
-            if route == "perp"
-            else [
-                (self._client.list_spot_tickers, None),
-                (self._client.list_perp_tickers, "markPrice"),
-            ]
-        )
+        # Hyperliquid only supports perpetual markets, no spot trading
+        # Always use perp tickers regardless of route
+        fetchers = [
+            (self._client.list_perp_tickers, "markPrice"),
+        ]
 
         for fetch, preferred_key in fetchers:
             try:
