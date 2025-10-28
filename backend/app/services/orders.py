@@ -958,7 +958,8 @@ class AdventureOrderService:
             self._position_mode = None
             return None
         try:
-            mode = await self._client.get_position_mode()
+            # BUG FIX #14: get_position_mode is not async, remove await
+            mode = self._client.get_position_mode()
             if mode:
                 self._position_mode = mode
             return mode
@@ -1055,7 +1056,8 @@ class AdventureOrderService:
             self._position_mode = None
             return None
         try:
-            mode = await self._client.get_position_mode()
+            # BUG FIX #14: get_position_mode is not async, remove await
+            mode = self._client.get_position_mode()
         except httpx.HTTPStatusError as exc:
             logger.debug("Position mode refresh failed (%s): %s", exc.response.status_code, exc)
             return self._position_mode

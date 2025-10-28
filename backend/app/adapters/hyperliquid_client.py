@@ -260,8 +260,20 @@ class HyperliquidClient:
             return self._simulate_order(payload, route="perp")
 
         try:
+            # BUG FIX #15: Validate required payload fields with clear error messages
+            if "symbol" not in payload:
+                raise ValueError("Missing required field: 'symbol'")
+            if "side" not in payload:
+                raise ValueError("Missing required field: 'side'")
+            if "size" not in payload:
+                raise ValueError("Missing required field: 'size'")
+
             symbol = payload["symbol"]
-            is_buy = payload["side"] == "buy"
+            side = payload["side"]
+            if side not in ("buy", "sell"):
+                raise ValueError(f"Invalid side value: {side} (must be 'buy' or 'sell')")
+            is_buy = side == "buy"
+
             size = float(payload["size"])
             order_type = payload.get("orderType", "market")
             reduce_only = payload.get("reduceOnly", False)
@@ -320,6 +332,7 @@ class HyperliquidClient:
                        "BUY" if is_buy else "SELL", symbol, size,
                        payload.get("price", "MARKET"))
 
+            # BUG FIX #18: Use consistent response parsing (check "status" field for order responses)
             # Hyperliquid SDK returns {"status": "ok", "response": {"type": "order", "data": {...}}}
             if isinstance(result, dict) and result.get("status") == "ok":
                 response_data = result.get("response", {})
@@ -340,6 +353,9 @@ class HyperliquidClient:
             return self._wrap_data({"status": "success", "symbol": payload.get("symbol")})
 
         try:
+            # BUG FIX #16: Validate required symbol field
+            if "symbol" not in payload:
+                raise ValueError("Missing required field: 'symbol'")
             symbol = payload["symbol"]
 
             # Get current position to determine size
@@ -364,7 +380,7 @@ class HyperliquidClient:
                 return self._wrap_data({"status": "no_position", "symbol": symbol})
 
             size = abs(size)
-            is_buy = target_position.get("holdSide") == "short"  # Buy to close short, sell to close long
+            # BUG FIX #19: Removed unused variable is_buy (market_close determines side automatically)
 
             # Hyperliquid SDK market_close(coin, sz=None, px=None, slippage=0.05, cloid=None)
             result = await asyncio.to_thread(
@@ -375,6 +391,7 @@ class HyperliquidClient:
 
             logger.info("Closed position: %s size=%.4f", symbol, size)
 
+            # BUG FIX #18: Use consistent response parsing (check "status" field for order responses)
             # Hyperliquid SDK returns {"status": "ok", "response": {"type": "order", "data": {...}}}
             if isinstance(result, dict) and result.get("status") == "ok":
                 response_data = result.get("response", {})
@@ -395,7 +412,11 @@ class HyperliquidClient:
             return self._simulate_order(payload, route="perp")
 
         try:
+            # BUG FIX #17: Validate required symbol field
+            if "symbol" not in payload:
+                raise ValueError("Missing required field: 'symbol'")
             symbol = payload["symbol"]
+
             trigger_price = float(payload.get("triggerPrice", 0))
             size = float(payload.get("size", 0))
 
@@ -448,6 +469,7 @@ class HyperliquidClient:
             logger.info("Placed stop-loss: %s trigger=%.4f size=%.4f",
                        symbol, trigger_price, size)
 
+            # BUG FIX #18: Use consistent response parsing (check "status" field for order responses)
             # Parse response
             if isinstance(result, dict) and result.get("status") == "ok":
                 response_data = result.get("response", {})
