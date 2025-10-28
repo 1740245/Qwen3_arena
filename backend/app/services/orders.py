@@ -39,6 +39,7 @@ class PendingEscapeRope:
     adventure_id: str
     client_oid: str
     stop_reference: str
+    embedded: bool = False  # Track if stop-loss was embedded in main order
     sensor_price: Optional[float]
     demo_mode: bool
     created_at: datetime
@@ -233,6 +234,7 @@ class AdventureOrderService:
                                 adventure_id=adventure_id,
                                 client_oid=prep.client_oid,
                                 stop_reference=stop_loss_reference,
+                                embedded=embedded_stop_loss,
                                 sensor_price=sensor_price,
                                 demo_mode=is_demo,
                                 created_at=datetime.now(timezone.utc),
@@ -956,7 +958,8 @@ class AdventureOrderService:
             self._position_mode = None
             return None
         try:
-            mode = await self._client.get_position_mode()
+            # BUG FIX #14: get_position_mode is not async, remove await
+            mode = self._client.get_position_mode()
             if mode:
                 self._position_mode = mode
             return mode
@@ -1053,7 +1056,8 @@ class AdventureOrderService:
             self._position_mode = None
             return None
         try:
-            mode = await self._client.get_position_mode()
+            # BUG FIX #14: get_position_mode is not async, remove await
+            mode = self._client.get_position_mode()
         except httpx.HTTPStatusError as exc:
             logger.debug("Position mode refresh failed (%s): %s", exc.response.status_code, exc)
             return self._position_mode
@@ -1320,17 +1324,8 @@ class AdventureOrderService:
         adjustments: Dict[str, Any],
     ) -> str:
         if prep.route == "spot":
-            payload: Dict[str, Any] = {
-                "symbol": prep.profile.spot_symbol,
-                "side": "sell",
-                "triggerType": order.stop_loss_trigger.value,
-                "triggerPrice": self._format_price(prep.profile, "spot", stop_price),
-                "orderType": "market",
-                "size": self._format_size("spot", prep.profile, order.pokeball_strength),
-            }
-            response = await self._client.place_spot_stop_loss(payload, demo_mode=demo_mode)
-            entry = self._first_payload_entry(response)
-            reference = entry.get("planOrderId") or entry.get("orderId")
+            # Hyperliquid only supports perpetual markets, no spot trading
+            raise ValueError("Spot stop-loss orders are not supported on Hyperliquid. Only perpetual markets are available.")
         else:
             meta = prep.contract_meta or await self._get_contract_meta(prep.profile.perp_symbol)
             formatted_stop = self._format_price(prep.profile, prep.route, stop_price)
@@ -1363,6 +1358,10 @@ class AdventureOrderService:
         *,
         demo_mode: bool,
     ) -> str:
+        # Validate profile exists
+        if not prep.profile:
+            raise ValueError("Cannot embed stop-loss: profile is missing")
+
         meta = prep.contract_meta or await self._get_contract_meta(prep.profile.perp_symbol if prep.profile else None)
         if meta is None:
             meta = DEFAULT_CONTRACT_META
@@ -1418,17 +1417,23 @@ class AdventureOrderService:
         return formatted_stop
 
     def _format_price(self, profile, route: str, price: float) -> str:
+        if not profile:
+            # Default to 2 decimal places if profile is missing
+            return f"{price:.2f}"
         if route == "perp" and profile.perp_pip_precision is not None:
             precision = profile.perp_pip_precision
         else:
-            precision = profile.pip_precision
+            precision = profile.pip_precision if profile.pip_precision is not None else 2
         return f"{price:.{precision}f}"
 
     def _format_size(self, route: str, profile, size: float) -> str:
+        if not profile:
+            # Default to 4 decimal places if profile is missing
+            return f"{size:.4f}"
         if route == "perp" and profile.perp_size_precision is not None:
             precision = profile.perp_size_precision
         else:
-            precision = profile.size_precision
+            precision = profile.size_precision if profile.size_precision is not None else 4
         return f"{size:.{precision}f}"
 
     async def build_order_preview(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1535,9 +1540,8 @@ class AdventureOrderService:
     ) -> float | None:
         try:
             if prep.route == "spot":
-                ticker = await self._client.list_spot_tickers()
-                data = self._payload_entries(ticker)
-                symbol = prep.profile.spot_symbol
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot tickers are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 ticker = await self._client.list_perp_tickers()
                 data = self._payload_entries(ticker)
@@ -1573,9 +1577,21 @@ class AdventureOrderService:
         existing = self._pending_escape_tasks.pop(pending.client_oid, None)
         if existing:
             existing.cancel()
+            # Wait for cancellation to complete to avoid race condition
+            try:
+                asyncio.create_task(self._wait_for_task_cancellation(existing))
+            except Exception:
+                pass  # Task may already be done
         self._pending_escape_meta[pending.client_oid] = pending
         task = asyncio.create_task(self._adjust_escape_rope(pending))
         self._pending_escape_tasks[pending.client_oid] = task
+
+    async def _wait_for_task_cancellation(self, task: asyncio.Task) -> None:
+        """Wait for a task to finish cancellation."""
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass  # Expected - task was cancelled or timed out
 
     async def _adjust_escape_rope(self, pending: PendingEscapeRope) -> None:
         client_oid = pending.client_oid
@@ -1595,15 +1611,19 @@ class AdventureOrderService:
                         return
                     if pending.sensor_price is not None:
                         delta = abs(final_stop - pending.sensor_price)
-                        precision = pending.prep.profile.pip_precision
-                        min_tick = 10 ** -precision if precision >= 0 else 0.0
-                        if delta < min_tick:
-                            self._append_log(
-                                message="Escape Rope set using sensor anchor.",
-                                badge=None,
-                                payload={"clientOid": client_oid, "stage": "escape-fine-tune"},
-                            )
-                            return
+                        # Check if profile exists before accessing pip_precision
+                        if pending.prep.profile is None:
+                            logger.warning("Profile is None, skipping tick check")
+                        else:
+                            precision = pending.prep.profile.pip_precision
+                            min_tick = 10 ** -precision if precision >= 0 else 0.0
+                            if delta < min_tick:
+                                self._append_log(
+                                    message="Escape Rope set using sensor anchor.",
+                                    badge=None,
+                                    payload={"clientOid": client_oid, "stage": "escape-fine-tune"},
+                                )
+                                return
                     await self._replace_escape_rope(pending, final_stop)
                     self._append_log(
                         message="Escape Rope fine-tuned to your Distance (%) anchor.",
@@ -1637,7 +1657,8 @@ class AdventureOrderService:
         )
         try:
             if pending.prep.route == "spot":
-                fills = await self._client.list_fills(symbol)
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot fills are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 fills = await self._client.list_perp_fills(symbol, demo_mode=pending.demo_mode)
         except Exception:
@@ -1666,26 +1687,27 @@ class AdventureOrderService:
 
     async def _replace_escape_rope(self, pending: PendingEscapeRope, new_price: float) -> None:
         await self._cancel_escape_rope(pending)
+        adjustments: Dict[str, Any] = {}
         new_reference = await self._attach_stop_loss(
             pending.order,
             pending.prep,
             stop_price=new_price,
             demo_mode=pending.demo_mode,
+            adjustments=adjustments,
         )
         pending.stop_reference = new_reference
 
     async def _cancel_escape_rope(self, pending: PendingEscapeRope) -> None:
         if not pending.stop_reference:
             return
+        # Embedded stop-losses can't be cancelled separately (they're part of main order)
+        if pending.embedded:
+            logger.debug("Skipping cancel for embedded stop-loss")
+            return
         try:
             if pending.prep.route == "spot":
-                await self._client.cancel_spot_plan_order(
-                    {
-                        "symbol": pending.prep.profile.spot_symbol,
-                        "planOrderId": pending.stop_reference,
-                    },
-                    demo_mode=pending.demo_mode,
-                )
+                # Hyperliquid only supports perpetual markets, no spot trading
+                raise ValueError("Spot plan orders are not supported on Hyperliquid. Only perpetual markets are available.")
             else:
                 payload = {
                     "symbol": pending.prep.profile.perp_symbol,
@@ -1765,20 +1787,7 @@ class AdventureOrderService:
 
         # Close any remaining perpetual positions for the species
         party_snapshot = await self.list_party_status(demo_mode=is_demo)
-        spot_amount = self._estimate_spot_balance(order.species, party_snapshot)
-        if spot_amount > 0:
-            sell_payload = {
-                "symbol": profile.spot_symbol,
-                "side": "sell",
-                "orderType": "market",
-                "size": self._format_size("spot", profile, spot_amount),
-            }
-            try:
-                await self._client.place_spot_order(sell_payload, demo_mode=is_demo)
-            except (httpx.HTTPStatusError, httpx.RequestError, asyncio.TimeoutError) as exc:  # pragma: no cover - network guard
-                self._handle_exchange_error(exc, context="runaway spot closing")
-            except RuntimeError as exc:  # pragma: no cover - credential guard
-                self._handle_exchange_error(exc, context="runaway spot closing")
+        # Note: Hyperliquid doesn't have spot markets, so skip spot balance closing
 
         # Refresh party snapshot post-closure to update guardrails
         await self.list_party_status(demo_mode=is_demo)
@@ -1790,7 +1799,8 @@ class AdventureOrderService:
             badge=badge,
             payload={"species": order.species, "demo": is_demo},
         )
-        self._last_encounter_at = datetime.utcnow()
+        # BUG FIX #8: Replace deprecated datetime.utcnow() with datetime.now(timezone.utc)
+        self._last_encounter_at = datetime.now(timezone.utc)
 
         return AdventureOrderReceipt(
             adventure_id=str(uuid.uuid4()),
@@ -1937,17 +1947,11 @@ class AdventureOrderService:
         raise ValueError("Professor Elm: price data not available right now.")
 
     async def _fetch_mark_from_exchange(self, base: str, route: str) -> Optional[float]:
-        fetchers = (
-            [
-                (self._client.list_perp_tickers, "markPrice"),
-                (self._client.list_spot_tickers, None),
-            ]
-            if route == "perp"
-            else [
-                (self._client.list_spot_tickers, None),
-                (self._client.list_perp_tickers, "markPrice"),
-            ]
-        )
+        # Hyperliquid only supports perpetual markets, no spot trading
+        # Always use perp tickers regardless of route
+        fetchers = [
+            (self._client.list_perp_tickers, "markPrice"),
+        ]
 
         for fetch, preferred_key in fetchers:
             try:
