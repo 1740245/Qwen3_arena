@@ -4,7 +4,7 @@ import asyncio
 import logging
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Set
 
 import httpx
@@ -91,30 +91,26 @@ class PriceFeed:
         except Exception as exc:
             await self._mark_failure(exc)
             return
-        logger.info("PriceFeed poll ok (%d items)", updated)
+        logger.debug("PriceFeed poll ok (%d items)", updated)
 
     async def _mark_failure(self, exc: Exception) -> None:
         error_label = self._format_error(exc)
         async with self._lock:
             if self._last_ts is None:
-                self._last_ts = datetime.utcnow()
+                self._last_ts = datetime.now(timezone.utc)
             self._healthy = False
         logger.error("PriceFeed poll error (%s): %s", exc.__class__.__name__, error_label)
 
     async def _refresh(self) -> int:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         perp_payload = await self._with_retries(self._client.list_perp_tickers)
         perp_quotes, missing = self._extract_perp_quotes(perp_payload, now)
 
         quotes = dict(perp_quotes)
+        # Hyperliquid only supports perpetuals, no spot markets
+
         if missing:
-            try:
-                spot_payload = await self._with_retries(self._client.list_spot_tickers)
-            except Exception as exc:  # pragma: no cover - fallback diagnostic
-                logger.debug("PriceFeed spot fallback error: %s", exc)
-            else:
-                spot_quotes = self._extract_spot_quotes(spot_payload, now, missing)
-                quotes.update(spot_quotes)
+            logger.debug("PriceFeed: missing quotes for %s", missing)
 
         if not quotes:
             raise asyncio.TimeoutError("no quotes collected from ticker payloads")
@@ -179,7 +175,7 @@ class PriceFeed:
 
     async def snapshot(self) -> Dict[str, object]:
         async with self._lock:
-            timestamp = int((self._last_ts or datetime.utcnow()).timestamp() * 1000)
+            timestamp = int((self._last_ts or datetime.now(timezone.utc)).timestamp() * 1000)
             healthy = self._healthy and bool(self._quotes)
             items = []
             for base in self._bases:
@@ -210,7 +206,7 @@ class PriceFeed:
             base = self._base_from_symbol(symbol)
             if base not in missing:
                 continue
-            price = self._extract_price(entry, key="markPrice")
+            price = self._extract_price(entry, key="lastPr")
             if price is None:
                 continue
             quotes[base] = self._build_quote(base, price, "perp", now)
@@ -258,15 +254,24 @@ class PriceFeed:
 
     @staticmethod
     def _base_from_symbol(symbol: str) -> Optional[str]:
+        """
+        Extract base symbol from market symbol.
+        Hyperliquid uses native symbols (BTC, ETH, SOL).
+        Legacy Bitget used BTCUSDT, ETHUSDT format.
+        """
         upper = symbol.upper()
-        if not upper.endswith("USDT"):
-            return None
-        base = upper[: -len("USDT")]
-        return base or None
+        # Hyperliquid: symbols are already base tokens
+        # Just return the symbol as-is
+        return upper if upper else None
 
     @staticmethod
-    def _extract_price(entry: Dict[str, object], key: str = "markPrice") -> Optional[float]:
-        for candidate in (key, "close", "last", "price"):
+    def _extract_price(entry: Dict[str, object], key: str = "lastPr") -> Optional[float]:
+        """
+        Extract price from ticker entry.
+        Hyperliquid uses: lastPr, askPr, bidPr
+        Legacy Bitget used: markPrice, close, last, price
+        """
+        for candidate in (key, "lastPr", "askPr", "bidPr", "markPrice", "close", "last", "price"):
             value = entry.get(candidate)
             if value is None:
                 continue

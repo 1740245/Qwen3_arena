@@ -1,22 +1,41 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 :root {
-  --gba-bg: #f5f2df;
-  --gba-shell: #3b3f58;
-  --gba-screen: #d9d3be;
-  --gba-border: #111321;
-  --gba-accent: #efce56;
-  --gba-red: #ff4c61;
-  --gba-green: #68b96a;
-  --gba-blue: #6ca5ff;
-  --gba-dark: #1a1c2d;
+  /* Qwen3 Arena Color Palette */
+  --bg-dark: #0a0e27;
+  --bg-card: #1a1f3a;
+  --primary-purple: #6B46C1;
+  --primary-blue: #3B82F6;
+  --accent-cyan: #06B6D4;
+  --accent-green: #10B981;
+  --accent-red: #EF4444;
+  --accent-yellow: #F59E0B;
+  --text-primary: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --border-glow: #8B5CF6;
+
+  /* Legacy mappings for compatibility */
+  --gba-bg: var(--bg-dark);
+  --gba-shell: var(--bg-card);
+  --gba-screen: rgba(26, 31, 58, 0.8);
+  --gba-border: var(--border-glow);
+  --gba-accent: var(--accent-cyan);
+  --gba-red: var(--accent-red);
+  --gba-green: var(--accent-green);
+  --gba-blue: var(--primary-blue);
+  --gba-dark: var(--bg-dark);
+
+  /* Typography */
   --ui-font: 'Press Start 2P', monospace;
   --fs-xs: 10px;
   --fs-sm: 12px;
   --fs-md: 14px;
   --font-main: var(--ui-font);
-  --ink: #111111;
-  --ink-muted: #4a4a4a;
+  --ink: var(--text-primary);
+  --ink-muted: var(--text-secondary);
+
+  /* Update interval */
+  --refresh-interval: 300s;
 }
 
 body,
@@ -50,21 +69,22 @@ body {
   margin: 0;
   min-height: 100vh;
   padding: 1.5rem;
-  background: radial-gradient(circle at top, var(--gba-bg), #cbc3a2 65%, #9f9674);
+  background: linear-gradient(135deg, var(--bg-dark) 0%, #1a1f3a 50%, #0f1729 100%);
+  background-attachment: fixed;
   font-family: var(--font-main);
-  color: var(--gba-dark);
+  color: var(--text-primary);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .gba-shell {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  background: var(--gba-shell);
-  border: 8px solid var(--gba-border);
-  border-radius: 28px 28px 90px 28px;
+  background: var(--bg-card);
+  border: 2px solid var(--border-glow);
+  border-radius: 20px;
   padding: 1.5rem;
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.3), 0 18px 45px rgba(0, 0, 0, 0.6);
 }
 
 .status-top {
@@ -72,11 +92,13 @@ body {
   grid-template-columns: clamp(180px, 40%, 320px) 1fr auto;
   gap: 1.5rem;
   align-items: center;
-  background: #2b2f47;
-  border: 4px solid var(--gba-border);
-  border-radius: 16px;
+  background: rgba(10, 14, 39, 0.6);
+  border: 1px solid var(--border-glow);
+  border-radius: 12px;
   padding: 1.25rem;
-  color: var(--gba-accent);
+  color: var(--accent-cyan);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
 }
 
 .title-block h1 {
@@ -132,7 +154,8 @@ body {
   left: 0;
   height: 100%;
   width: 12%;
-  background: linear-gradient(90deg, #ff7676, var(--gba-red));
+  background: linear-gradient(90deg, var(--accent-cyan), var(--primary-blue));
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
   transition: width 0.4s ease;
 }
 
@@ -164,22 +187,26 @@ body {
 }
 
 .panel {
-  background: var(--gba-screen);
-  border: 4px solid var(--gba-border);
-  border-radius: 18px;
+  background: rgba(26, 31, 58, 0.8);
+  border: 1px solid var(--border-glow);
+  border-radius: 12px;
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  color: var(--gba-dark);
+  color: var(--text-primary);
   min-height: 320px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 .panel h2 {
   margin: 0;
   font-size: 0.85rem;
   padding-bottom: 0.5rem;
-  border-bottom: 3px solid var(--gba-border);
+  border-bottom: 2px solid var(--border-glow);
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
 }
 
 .panel-heading {
@@ -382,15 +409,16 @@ body {
 }
 
 .btn {
-  border: 3px solid var(--gba-border);
-  border-radius: 12px;
-  background: #fef2bd;
+  border: 1px solid var(--border-glow);
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--primary-purple), var(--primary-blue));
+  color: var(--text-primary);
   padding: 10px 12px;
   font-size: var(--fs-sm);
   text-transform: uppercase;
   cursor: pointer;
   line-height: 1.15;
-  transition: transform 0.1s ease, filter 0.1s ease;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -399,9 +427,13 @@ body {
   min-width: max-content;
 }
 
+.btn:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(107, 70, 193, 0.6);
+  transform: translateY(-2px);
+}
+
 .btn:active {
-  transform: translateY(2px);
-  filter: brightness(0.95);
+  transform: translateY(0);
 }
 
 .encounter-actions {
@@ -524,8 +556,9 @@ body {
   width: 100%;
   min-height: 48px;
   line-height: 1.15;
-  background: var(--gba-accent);
-  border: 4px solid var(--gba-border);
+  background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+  border: 2px solid var(--border-glow);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
 }
 
 .confirm-wrap .btn-confirm:disabled {
@@ -728,4 +761,102 @@ body {
 
 .lv-control {
   display: none;
+}
+
+/* AI Chat Section Styles */
+.ai-chat-pane {
+  grid-column: span 1;
+  min-height: 300px;
+  max-height: 500px;
+  overflow: hidden;
+}
+
+.ai-chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ai-chat-message {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid var(--primary-blue);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.ai-chat-message:hover {
+  background: rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+}
+
+.ai-avatar {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.ai-content {
+  flex: 1;
+}
+
+.ai-timestamp {
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  text-transform: none;
+}
+
+.ai-text {
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0;
+  font-size: 0.65rem;
+  text-transform: none;
+}
+
+/* Scrollbar styling for AI chat */
+.ai-chat-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ai-chat-container::-webkit-scrollbar-track {
+  background: rgba(10, 14, 39, 0.5);
+  border-radius: 4px;
+}
+
+.ai-chat-container::-webkit-scrollbar-thumb {
+  background: var(--border-glow);
+  border-radius: 4px;
+}
+
+.ai-chat-container::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-purple);
+}
+
+/* Grid layout adjustments for AI chat */
+@media (min-width: 1200px) {
+  .screen-grid {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+
+  .roster {
+    grid-column: span 1;
+  }
+
+  .encounter {
+    grid-column: span 1;
+  }
+
+  .journal-pane {
+    grid-row: span 2;
+  }
+
+  .ai-chat-pane {
+    grid-column: span 1;
+  }
 }

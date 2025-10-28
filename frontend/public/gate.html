@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Poké‑Adventure Gate</title>
+    <title>Qwen3 Arena - Access Gate</title>
     <link rel="stylesheet" href="/gate.css" />
   </head>
   <body class="gate-body">
     <main class="gate-shell" role="main">
       <header class="gate-header">
-        <h1 class="gate-title">Professor Elm</h1>
-        <p class="gate-prompt">“First, what is your name?”</p>
+        <h1 class="gate-title">Qwen3 Arena</h1>
+        <p class="gate-prompt">Enter Access Phrase</p>
       </header>
       <form id="gate-form" class="gate-form" autocomplete="off" novalidate>
         <label class="sr-only" for="gate-input">Enter passphrase</label>
@@ -21,12 +21,12 @@
           type="text"
           inputmode="latin-prose"
           maxlength="64"
-          placeholder="Type your answer"
+          placeholder="Enter passphrase"
           required
         />
-        <button type="submit" id="gate-button" class="gate-button" disabled>BEGIN</button>
+        <button type="submit" id="gate-button" class="gate-button" disabled>ENTER ARENA</button>
       </form>
-      <p class="gate-hint">Begin your Johto adventure by whispering the trusted name.</p>
+      <p class="gate-hint">Authorized access only. Enter your credentials to continue.</p>
     </main>
     <div id="gate-toast" class="gate-toast" role="status" aria-live="polite" hidden>ACCESS DENIED</div>
     <script type="module" src="/gate.js"></script>

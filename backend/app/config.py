@@ -66,8 +66,42 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("BITGET_DEMO_BASE_URL", "bitget_demo_base_url"),
         description="Base URL for Bitget demo/paper trading REST API.",
     )
+
+    # Hyperliquid Configuration
+    hyperliquid_wallet_address: str = Field(
+        default="",
+        alias="HYPERLIQUID_WALLET_ADDRESS",
+        validation_alias=AliasChoices(
+            "HYPERLIQUID_WALLET_ADDRESS",
+            "hyperliquid_wallet_address",
+            "HL_WALLET_ADDRESS",
+        ),
+        description="Hyperliquid main wallet address (0x...)",
+    )
+    hyperliquid_private_key: str = Field(
+        default="",
+        alias="HYPERLIQUID_PRIVATE_KEY",
+        validation_alias=AliasChoices(
+            "HYPERLIQUID_PRIVATE_KEY",
+            "hyperliquid_private_key",
+            "HL_PRIVATE_KEY",
+            "HL_API_SECRET",
+        ),
+        description="Hyperliquid API wallet private key (0x...) or main wallet private key",
+    )
+    hyperliquid_testnet: bool = Field(
+        default=False,
+        alias="HYPERLIQUID_TESTNET",
+        validation_alias=AliasChoices(
+            "HYPERLIQUID_TESTNET",
+            "hyperliquid_testnet",
+            "HL_TESTNET",
+        ),
+        description="Use Hyperliquid testnet instead of mainnet",
+    )
+
     portfolio_base_species: str = Field(
-        default="Rare Candy",
+        default="USDT",
         alias="PORTFOLIO_BASE_SPECIES",
         validation_alias=AliasChoices("PORTFOLIO_BASE_SPECIES", "portfolio_base_species"),
         description="Display name for the base currency (e.g., USD).",
@@ -85,14 +119,14 @@ class Settings(BaseSettings):
         description="Python logging level for the application.",
     )
     cooldown_seconds: int = Field(
-        default=5,
+        default=300,
         alias="ADVENTURE_COOLDOWN_SECONDS",
         validation_alias=AliasChoices(
             "ADVENTURE_COOLDOWN_SECONDS",
             "ORDER_COOLDOWN_SECONDS",
             "order_cooldown_seconds",
         ),
-        description="Cooldown in seconds before the next Poké Ball throw.",
+        description="Cooldown in seconds before the next trade order (5 minutes).",
     )
     max_team_size: int = Field(
         default=6,
@@ -217,7 +251,7 @@ class Settings(BaseSettings):
         ],
         alias="PINNED_PERP_BASES",
         validation_alias=AliasChoices("PINNED_PERP_BASES", "pinned_perp_bases"),
-        description="Comma-separated list of pinned USDT-M perp bases in roster order.",
+        description="Comma-separated list of pinned Hyperliquid perpetual bases in roster order.",
     )
 
     def model_post_init(self, __context: object) -> None:
@@ -279,22 +313,35 @@ class Settings(BaseSettings):
         if self._trading_locked and not getattr(self, "_trading_warning_logged", False):
             missing = ", ".join(self.missing_credentials()) or "credentials"
             logger.warning(
-                "Professor Elm waves: live adventures need Bitget credentials (%s). Trading endpoints are resting until keys arrive or demo mode is enabled.",
+                "System: live trading requires Bitget credentials (%s). Trading endpoints are disabled until keys are provided or demo mode is enabled.",
                 missing,
             )
             self._trading_warning_logged = True
 
     def has_api_credentials(self) -> bool:
-        """Return True if a full credential set is configured."""
-
+        """Return True if a full credential set is configured (Bitget legacy)."""
         return all(self._credential_flags.values())
+
+    def has_hyperliquid_credentials(self) -> bool:
+        """Return True if Hyperliquid credentials are configured."""
+        return bool(
+            self.hyperliquid_wallet_address
+            and self.hyperliquid_wallet_address.startswith("0x")
+            and self.hyperliquid_private_key
+            and self.hyperliquid_private_key.startswith("0x")
+        )
 
     @property
     def credential_status(self) -> Dict[str, bool]:
-        return dict(self._credential_flags)
+        status = dict(self._credential_flags)
+        status["hyperliquid"] = self.has_hyperliquid_credentials()
+        return status
 
     def missing_credentials(self) -> List[str]:
-        return [key for key, present in self._credential_flags.items() if not present]
+        missing = [key for key, present in self._credential_flags.items() if not present]
+        if not self.has_hyperliquid_credentials():
+            missing.append("hyperliquid")
+        return missing
 
     @property
     def runtime_mode(self) -> str:

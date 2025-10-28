@@ -6,7 +6,7 @@ import math
 from decimal import Decimal, ROUND_DOWN
 import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -235,7 +235,7 @@ class AdventureOrderService:
                                 stop_reference=stop_loss_reference,
                                 sensor_price=sensor_price,
                                 demo_mode=is_demo,
-                                created_at=datetime.utcnow(),
+                                created_at=datetime.now(timezone.utc),
                             )
                         )
             narration = self._friendly_message(
@@ -283,7 +283,7 @@ class AdventureOrderService:
                     "demo": is_demo,
                 },
             )
-            self._last_encounter_at = datetime.utcnow()
+            self._last_encounter_at = datetime.now(timezone.utc)
             return receipt
         except ValueError:
             raise
@@ -498,13 +498,7 @@ class AdventureOrderService:
 
         entries.extend(self._payload_entries(perp_payload))
 
-        try:
-            spot_payload = await self._client.list_open_spot_orders(demo_mode=is_demo)
-        except Exception as exc:
-            logger.debug("Spot open orders summary fetch failed: %s", exc)
-            spot_payload = {}
-
-        entries.extend(self._payload_entries(spot_payload))
+        # Hyperliquid only supports perpetuals, no spot trading
 
         if not entries:
             return {}
@@ -571,87 +565,58 @@ class AdventureOrderService:
         if not base_symbol:
             raise ValueError(f"{species} does not have a tradable symbol configured.")
 
-        candidates = self._symbol_candidates(base_symbol)
+        # Hyperliquid uses cancel_all_orders_by_symbol instead of per-order cancellation
         cancelled_records: List[Dict[str, Any]] = []
         failed_records: List[Dict[str, Any]] = []
-        used_symbol: Optional[str] = None
 
-        for candidate in candidates:
-            pending_payload = await self._client.get_mix_orders_pending(
-                symbol=candidate,
+        try:
+            response = await self._client.cancel_all_orders_by_symbol(
+                symbol=base_symbol,
                 demo_mode=is_demo,
             )
-            entries = self._extract_mix_order_entries(pending_payload)
-            if not entries:
-                continue
 
-            used_symbol = candidate
-            for entry in entries:
-                order_id = (
-                    entry.get("orderId")
-                    or entry.get("id")
-                    or entry.get("order_id")
-                    or entry.get("clientOid")
-                )
-                if not isinstance(order_id, str) or not order_id:
-                    continue
-
-                try:
-                    response = await self._client.cancel_mix_order(
-                        symbol=candidate,
-                        order_id=order_id,
-                        demo_mode=is_demo,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Cancel order failed (species=%s symbol=%s order=%s): %s",
-                        species,
-                        candidate,
-                        order_id,
-                        exc,
-                    )
-                    failed_records.append(
-                        {
-                            "symbol": candidate,
-                            "orderId": order_id,
-                            "ok": False,
-                            "code": None,
-                            "msg": str(exc),
-                        }
-                    )
-                    continue
-
-                record = {
-                    "symbol": response.get("symbol", candidate),
-                    "orderId": response.get("orderId", order_id),
-                    "ok": bool(response.get("ok")),
-                    "code": response.get("code"),
-                    "msg": response.get("msg"),
-                }
-                if record["ok"]:
-                    cancelled_records.append(record)
+            # Parse Hyperliquid response format
+            if isinstance(response, dict):
+                status = response.get("status", "")
+                if status == "ok":
+                    # Successful cancellation
+                    cancelled_records.append({
+                        "symbol": base_symbol,
+                        "ok": True,
+                        "msg": "All orders cancelled",
+                    })
                 else:
-                    failed_records.append(record)
-
-            if cancelled_records:
-                break
-
-        if used_symbol is None:
-            used_symbol = candidates[0] if candidates else base_symbol.upper()
+                    # Failed cancellation
+                    failed_records.append({
+                        "symbol": base_symbol,
+                        "ok": False,
+                        "msg": response.get("response", str(response)),
+                    })
+        except Exception as exc:
+            logger.warning(
+                "Cancel all orders failed (species=%s symbol=%s): %s",
+                species,
+                base_symbol,
+                exc,
+            )
+            failed_records.append({
+                "symbol": base_symbol,
+                "ok": False,
+                "msg": str(exc),
+            })
 
         success = bool(cancelled_records) and not failed_records
         if success:
             logger.info(
-                "Cancelled %d open orders for %s (%s)",
-                len(cancelled_records),
+                "Cancelled all open orders for %s (%s)",
                 species,
-                used_symbol,
+                base_symbol,
             )
         else:
             logger.warning(
                 "Cancel orders incomplete (species=%s symbol=%s cancelled=%d failed=%d)",
                 species,
-                used_symbol,
+                base_symbol,
                 len(cancelled_records),
                 len(failed_records),
             )
@@ -659,8 +624,7 @@ class AdventureOrderService:
         return {
             "ok": success,
             "species": species,
-            "symbol": used_symbol,
-            "attemptedSymbols": candidates,
+            "symbol": base_symbol,
             "cancelled": cancelled_records,
             "failed": failed_records,
             "cancelled_count": len(cancelled_records),
@@ -1157,7 +1121,7 @@ class AdventureOrderService:
         self._adventure_log.append(
             AdventureLogEntry(
                 event_id=str(uuid.uuid4()),
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 message=message,
                 badge=badge,
                 payload=payload,
@@ -1229,18 +1193,8 @@ class AdventureOrderService:
             # Prioritize profile-based precision for high-precision symbols like Umbreon and Heracross
             tick: Optional[Decimal] = None
 
-            # Debug profile access first
+            # Get profile for precision calculation
             profile = getattr(prep, "profile", None)
-            if profile:
-                display_name = getattr(profile, 'display_name', 'UNKNOWN')
-                if display_name in ['Umbreon', 'Heracross']:
-                    logger.warning(f"DEBUG {display_name} profile found: has_profile=True")
-                    logger.warning(f"DEBUG {display_name} profile type: {type(profile)}")
-                    logger.warning(f"DEBUG {display_name} route: {prep.route}")
-                    logger.warning(f"DEBUG {display_name} profile raw perp_pip_precision: {profile.perp_pip_precision}")
-                    logger.warning(f"DEBUG {display_name} profile raw pip_precision: {profile.pip_precision}")
-                    logger.warning(f"DEBUG {display_name} perp_pip: {getattr(profile, 'perp_pip_precision', 'NONE')}")
-                    logger.warning(f"DEBUG {display_name} pip: {getattr(profile, 'pip_precision', 'NONE')}")
 
             # First try to get precision from species profile
             if profile:
@@ -1250,26 +1204,15 @@ class AdventureOrderService:
                 elif getattr(profile, "pip_precision", None) is not None:
                     precision = profile.pip_precision
 
-                # Debug logging for precision calculation
-                if getattr(profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                    logger.warning(f"DEBUG {profile.display_name} precision selected: {precision}")
-
                 if isinstance(precision, int) and precision >= 0:
                     tick = Decimal("1").scaleb(-precision)
-                    if getattr(profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                        logger.warning(f"DEBUG {profile.display_name} tick calculated from precision {precision}: {tick}")
 
             # If no profile precision, try contract metadata
             if tick is None or tick <= 0:
                 meta = getattr(prep, "contract_meta", None)
-                if profile and getattr(profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                    logger.warning(f"DEBUG {profile.display_name} fallback to contract meta: has_meta={meta is not None}")
-
                 if meta:
                     try:
                         tick_value = getattr(meta, "price_tick", None)
-                        if profile and getattr(profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                            logger.warning(f"DEBUG {profile.display_name} contract meta price_tick: {tick_value}")
                         if tick_value:
                             tick = Decimal(str(tick_value))
                     except Exception:
@@ -1277,8 +1220,6 @@ class AdventureOrderService:
 
             # Final fallback to default
             if tick is None or tick <= 0:
-                if profile and getattr(profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                    logger.warning(f"DEBUG {profile.display_name} final fallback to default: {DEFAULT_CONTRACT_META.price_tick}")
                 tick = Decimal(str(DEFAULT_CONTRACT_META.price_tick))
 
             def _quantize(value: float) -> Decimal:
@@ -1290,11 +1231,6 @@ class AdventureOrderService:
 
             comparison_stop = _quantize(float(order.stop_loss_value))
             comparison_limit = _quantize(float(order.limit_price))
-
-            # Debug logging for Umbreon and Heracross
-            if getattr(prep.profile, 'display_name', None) in ['Umbreon', 'Heracross']:
-                logger.warning(f"DEBUG {prep.profile.display_name} RAW: stop_loss_value={order.stop_loss_value} (type={type(order.stop_loss_value)}), limit_price={order.limit_price} (type={type(order.limit_price)})")
-                logger.warning(f"DEBUG {prep.profile.display_name}: tick={tick}, stop={order.stop_loss_value}->{comparison_stop}, limit={order.limit_price}->{comparison_limit}, direction={prep.direction}")
 
             if prep.direction in {"long", "spot_long"} and comparison_stop >= comparison_limit:
                 raise ValueError("Your Escape Rope must be set below your anchor point for a long.")
@@ -1452,18 +1388,6 @@ class AdventureOrderService:
 
         quant_price = meta.quantize_price(target)
         tick = getattr(meta, "price_tick", DEFAULT_CONTRACT_META.price_tick)
-
-        # Debug logging for Heracross contract metadata
-        if prep.profile and getattr(prep.profile, 'display_name', None) == 'Heracross':
-            print(f"DEBUG Heracross CONTRACT META: price_tick={meta.price_tick}, price_scale={meta.price_scale}")
-            print(f"DEBUG Heracross CONTRACT META: target={target} -> quantized={quant_price}")
-            print(f"DEBUG Heracross CONTRACT META: symbol={meta.symbol if hasattr(meta, 'symbol') else 'N/A'}")
-            # Check the actual tick being used in quantization
-            from .contract_meta import _meta_value
-            actual_tick = _meta_value(meta, "priceTick")
-            print(f"DEBUG Heracross CONTRACT META: _meta_value tick={actual_tick} (type: {type(actual_tick)})")
-            print(f"DEBUG Heracross CONTRACT META: meta object type={type(meta)}")
-            print(f"DEBUG Heracross CONTRACT META: meta object={meta}")
 
         entry_check = None
         if order.stop_loss_mode == StopLossMode.PRICE and order.order_style == OrderStyle.LIMIT and order.limit_price is not None:
@@ -1836,28 +1760,9 @@ class AdventureOrderService:
             except Exception:
                 pass
 
-        # Cancel open spot orders for the symbol
-        try:
-            open_spot = await self._client.list_open_spot_orders(
-                profile.spot_symbol, demo_mode=is_demo
-            )
-            for item in self._payload_entries(open_spot):
-                order_id = item.get("orderId")
-                if isinstance(order_id, str):
-                    await self._client.cancel_spot_order(
-                        order_id, profile.spot_symbol, demo_mode=is_demo
-                    )
-        except Exception:
-            pass
+        # Hyperliquid only supports perpetuals, no spot trading to cancel
 
-        try:
-            await self._client.cancel_spot_plan_order(
-                {"symbol": profile.spot_symbol}, demo_mode=is_demo
-            )
-        except Exception:
-            pass
-
-        # Sell any remaining spot holdings for the species
+        # Close any remaining perpetual positions for the species
         party_snapshot = await self.list_party_status(demo_mode=is_demo)
         spot_amount = self._estimate_spot_balance(order.species, party_snapshot)
         if spot_amount > 0:
@@ -1923,7 +1828,7 @@ class AdventureOrderService:
         return badge_map.get(action, "Adventurer")
 
     def _update_guardrails(self, party_size: int) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cooldown_remaining = 0.0
         if self._last_encounter_at:
             elapsed = (now - self._last_encounter_at).total_seconds()
@@ -1938,7 +1843,7 @@ class AdventureOrderService:
     async def _check_cooldown(self) -> None:
         if not self._last_encounter_at:
             return
-        elapsed = (datetime.utcnow() - self._last_encounter_at).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self._last_encounter_at).total_seconds()
         if elapsed < self._cooldown_seconds:
             remaining = int(self._cooldown_seconds - elapsed)
             raise ValueError(f"Professor Elm says to rest for {remaining} more seconds.")

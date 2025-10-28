@@ -8,4 +8,4 @@ _VENDOR_PATTERN = re.compile(r"bitget", re.IGNORECASE)
 def sanitize_vendor_terms(text: str | None) -> str | None:
     if not text:
         return text
-    return _VENDOR_PATTERN.sub("Professor Oak", text)
+    return _VENDOR_PATTERN.sub("System", text)

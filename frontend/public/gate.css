@@ -1,13 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 :root {
-  --gate-bg: #101830;
-  --gate-shell: #1f2e52;
-  --gate-border: #f6f2d0;
-  --gate-accent: #efce56;
-  --gate-text: #f6f2d0;
-  --gate-muted: rgba(246, 242, 208, 0.7);
-  --gate-toast-bg: #ff4c61;
+  --gate-bg: #0a0e27;
+  --gate-shell: #1a1f3a;
+  --gate-border: #8B5CF6;
+  --gate-accent: #06B6D4;
+  --gate-text: #F9FAFB;
+  --gate-muted: rgba(249, 250, 251, 0.7);
+  --gate-toast-bg: #EF4444;
 }
 
 * {
@@ -20,7 +20,8 @@ body.gate-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(150deg, var(--gate-bg) 0%, #0c1230 100%);
+  background: linear-gradient(135deg, var(--gate-bg) 0%, #1a1f3a 50%, #0f1729 100%);
+  background-attachment: fixed;
   font-family: 'Press Start 2P', monospace;
   color: var(--gate-text);
   padding: 1.5rem;
@@ -29,11 +30,12 @@ body.gate-body {
 .gate-shell {
   width: min(480px, 100%);
   background: var(--gate-shell);
-  border: 4px solid var(--gate-border);
-  border-radius: 22px;
+  border: 2px solid var(--gate-border);
+  border-radius: 20px;
   padding: 2.5rem 2rem;
   text-align: center;
-  box-shadow: 0 18px 40px rgba(7, 10, 24, 0.45);
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.3), 0 18px 40px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
@@ -51,6 +53,7 @@ body.gate-body {
   color: var(--gate-accent);
   text-transform: uppercase;
   letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
 }
 
 .gate-prompt {
@@ -66,42 +69,48 @@ body.gate-body {
 }
 
 .gate-input {
-  border: 3px solid var(--gate-border);
-  border-radius: 14px;
+  border: 1px solid var(--gate-border);
+  border-radius: 12px;
   padding: 0.95rem 1rem;
   font-size: 0.75rem;
-  background: rgba(5, 9, 26, 0.65);
+  background: rgba(10, 14, 39, 0.8);
   color: var(--gate-text);
   text-transform: uppercase;
   letter-spacing: 1px;
+  font-family: 'Press Start 2P', monospace;
 }
 
 .gate-input:focus {
   outline: none;
   border-color: var(--gate-accent);
-  box-shadow: 0 0 0 3px rgba(239, 206, 86, 0.35);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.35), 0 0 20px rgba(139, 92, 246, 0.4);
 }
 
 .gate-button {
-  border: 3px solid var(--gate-border);
-  border-radius: 14px;
+  border: 1px solid var(--gate-border);
+  border-radius: 12px;
   padding: 0.9rem 1.2rem;
   font-size: 0.75rem;
   letter-spacing: 1px;
-  background: var(--gate-accent);
-  color: #1b1f33;
+  background: linear-gradient(135deg, #6B46C1, var(--gate-accent));
+  color: var(--gate-text);
   cursor: pointer;
-  transition: transform 0.12s ease, filter 0.12s ease;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.gate-button:not(:disabled):hover {
+  box-shadow: 0 0 20px rgba(107, 70, 193, 0.6);
+  transform: translateY(-2px);
 }
 
 .gate-button:disabled {
   cursor: not-allowed;
-  filter: brightness(0.7);
+  opacity: 0.6;
 }
 
 .gate-button:not(:disabled):active {
-  transform: translateY(2px);
-  filter: brightness(0.92);
+  transform: translateY(0);
 }
 
 .gate-hint {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Poké-Adventure Trader</title>
+    <title>Qwen3 Arena Trader</title>
     <base href="/" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -11,21 +11,21 @@
     <div class="gba-shell">
       <header class="status-top">
         <div class="title-block">
-          <h1>Poké-Adventure Trader</h1>
-          <p id="trainer-name">Trainer ...</p>
+          <h1>Qwen3 Arena</h1>
+          <p id="trainer-name">Trader ...</p>
         </div>
         <div class="status-meters">
-          <div class="energy-meter" aria-label="Trainer energy bar">
+          <div class="energy-meter" aria-label="Trading balance bar">
             <div class="energy-header">
-              <span class="label">Energy</span>
-              <span id="energy-caption" class="energy-caption">HP --/--</span>
+              <span class="label">Balance</span>
+              <span id="energy-caption" class="energy-caption">$ --/--</span>
             </div>
             <div class="energy-bar">
               <div id="energy-fill" class="energy-fill"></div>
             </div>
           </div>
           <div class="guard-tiles">
-            <span id="cooldown-chip" class="guard-chip">Cooldown: --</span>
+            <span id="cooldown-chip" class="guard-chip">Next Update: --</span>
           </div>
         </div>
       </header>
@@ -33,32 +33,32 @@
       <main class="screen-grid">
         <section class="panel roster">
           <div class="panel-heading">
-            <h2>Adventure Roster</h2>
-            <button id="refresh-roster" class="sprite-button">Refresh Roster</button>
+            <h2>Asset Roster</h2>
+            <button id="refresh-roster" class="sprite-button">Refresh Prices</button>
           </div>
           <div id="roster-grid" class="roster-grid"></div>
         </section>
 
         <section class="panel encounter">
-          <h2>Wild Encounter</h2>
+          <h2>Trade Setup</h2>
           <form id="encounter-form" class="encounter-panel" autocomplete="off" novalidate>
             <div class="group">
-              <label class="field-label" for="species-select">Pokémon</label>
+              <label class="field-label" for="species-select">Asset</label>
               <select id="species-select"></select>
             </div>
 
             <div class="group">
               <span class="field-label">Action</span>
-              <div class="encounter-actions action-row" role="group" aria-label="Encounter action">
-                <button type="button" data-action="throw_pokeball" class="btn action action-btn active">THROW</button>
-                <button type="button" data-action="release_pokemon" class="btn action action-btn">RELEASE</button>
-                <button type="button" data-action="run_away" class="btn action action-btn">RUN</button>
+              <div class="encounter-actions action-row" role="group" aria-label="Trade action">
+                <button type="button" data-action="throw_pokeball" class="btn action action-btn active">OPEN</button>
+                <button type="button" data-action="release_pokemon" class="btn action action-btn">CLOSE</button>
+                <button type="button" data-action="run_away" class="btn action action-btn">CANCEL</button>
               </div>
               <input type="hidden" id="action-input" value="throw_pokeball" />
             </div>
 
             <div class="group lv-control">
-              <label class="field-label" for="level-slider">Encounter Level</label>
+              <label class="field-label" for="level-slider">Position Size</label>
               <div class="level-row">
                 <input type="range" id="level-slider" min="20" max="20" value="20" step="1" />
                 <span id="level-indicator" class="level-indicator slider-label">LV20</span>
@@ -68,28 +68,28 @@
             <div class="group">
               <span class="field-label">Size Presets</span>
               <div class="size-presets" role="group">
-                <button type="button" class="btn size-btn" data-hp="50" data-preset="hp50">HP 50</button>
-                <button type="button" class="btn size-btn" data-hp="100" data-preset="hp100">HP 100</button>
-                <button type="button" class="btn size-btn" data-hp="150" data-preset="hp150">HP 150</button>
+                <button type="button" class="btn size-btn" data-hp="50" data-preset="hp50">$50</button>
+                <button type="button" class="btn size-btn" data-hp="100" data-preset="hp100">$100</button>
+                <button type="button" class="btn size-btn" data-hp="150" data-preset="hp150">$150</button>
               </div>
               <small class="helper" id="size-helper"></small>
             </div>
 
             <div class="group">
-              <label class="field-label" for="strength-input">Poké Ball Strength</label>
+              <label class="field-label" for="strength-input">Order Size (USDT)</label>
               <input type="number" id="strength-input" min="0" step="any" inputmode="decimal" value="0.1" />
             </div>
 
             <div class="group">
-              <label class="field-label" for="order-style-select">Order Style</label>
+              <label class="field-label" for="order-style-select">Order Type</label>
               <select id="order-style-select">
-                <option value="market">Quick Throw</option>
-                <option value="limit">Aim Carefully</option>
+                <option value="market">Market Order</option>
+                <option value="limit">Limit Order</option>
               </select>
             </div>
 
             <div class="group">
-              <label class="field-label" for="price-input">Sparkle (Limit)</label>
+              <label class="field-label" for="price-input">Limit Price</label>
               <input
                 type="text"
                 id="price-input"
@@ -101,26 +101,26 @@
             </div>
 
             <div class="group stop-loss-group escape-rope" id="stop-loss-group" hidden>
-              <span class="field-label">Escape Rope</span>
-              <div class="mode-row" role="group" aria-label="Escape Rope mode">
-                <button type="button" class="btn mode-btn active" data-sl-mode="price">Anchor</button>
-                <button type="button" class="btn mode-btn" data-sl-mode="percent">Distance (%)</button>
+              <span class="field-label">Stop Loss</span>
+              <div class="mode-row" role="group" aria-label="Stop Loss mode">
+                <button type="button" class="btn mode-btn active" data-sl-mode="price">Price</button>
+                <button type="button" class="btn mode-btn" data-sl-mode="percent">Percent (%)</button>
               </div>
               <div class="sl-input">
                 <input
                   type="text"
                   id="stop-loss-input"
-                  placeholder="Set Anchor"
+                  placeholder="Set Price"
                   inputmode="decimal"
                   data-role="price-input"
                   autocomplete="off"
                 />
               </div>
               <div class="sl-trigger">
-                <label class="field-label" for="stop-loss-trigger">Pokédex Sensor</label>
+                <label class="field-label" for="stop-loss-trigger">Trigger Type</label>
                 <select id="stop-loss-trigger">
-                  <option value="mark_price">Mark Sensor</option>
-                  <option value="last_price">Last Sensor</option>
+                  <option value="mark_price">Mark Price</option>
+                  <option value="last_price">Last Price</option>
                 </select>
               </div>
               <small id="stop-loss-hint" class="helper"></small>
@@ -128,19 +128,35 @@
             </div>
 
             <div class="confirm-wrap">
-              <button type="submit" class="btn btn-confirm" disabled>Confirm Encounter</button>
+              <button type="submit" class="btn btn-confirm" disabled>Confirm Trade</button>
             </div>
           </form>
         </section>
 
         <section class="panel journal journal-pane">
-          <h2>Adventure Journal</h2>
+          <h2>Trade History</h2>
           <ul id="journal-feed"></ul>
         </section>
 
+        <section class="panel ai-chat-pane">
+          <div class="panel-heading">
+            <h2>AI Insights</h2>
+            <button id="refresh-ai-chat" class="sprite-button">Refresh</button>
+          </div>
+          <div id="ai-chat-container" class="ai-chat-container">
+            <div class="ai-chat-message">
+              <span class="ai-avatar">🤖</span>
+              <div class="ai-content">
+                <p class="ai-timestamp">Loading...</p>
+                <p class="ai-text">Analyzing market conditions...</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="panel party-pane" id="partyPane">
-          <h2>Party</h2>
-          <div id="partyEmpty" class="party-empty">No Pokémon in Party.</div>
+          <h2>Open Positions</h2>
+          <div id="partyEmpty" class="party-empty">No Open Positions.</div>
           <div id="partyList" class="party-list"></div>
         </section>
       </main>

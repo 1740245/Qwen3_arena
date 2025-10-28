@@ -29,7 +29,8 @@ class SpeciesProfile:
 
     @property
     def base_token(self) -> str:
-        return self.spot_symbol[:-4] if self.spot_symbol.upper().endswith("USDT") else self.spot_symbol
+        # Hyperliquid symbols are already base tokens (BTC, ETH, etc.)
+        return self.spot_symbol
 
 
 @dataclass
@@ -65,8 +66,6 @@ class PokemonTranslator:
         profile_map: Dict[str, SpeciesProfile] = {}
         symbol_map: Dict[str, SpeciesProfile] = {}
         for profile in profiles:
-            if profile.display_name == "Umbreon":
-                print(f"DEBUG: replace_profiles - Umbreon pip_precision={profile.pip_precision}, perp_pip_precision={profile.perp_pip_precision}")
             profile_map[profile.display_name] = profile
             symbol_map[profile.spot_symbol.upper()] = profile
             if profile.perp_symbol:
@@ -90,8 +89,6 @@ class PokemonTranslator:
         profile = self._profiles.get(species)
         if not profile:
             raise ValueError(f"Unknown species: {species}")
-        if species == "Umbreon":
-            print(f"DEBUG: species_to_profile - Umbreon pip_precision={profile.pip_precision}, perp_pip_precision={profile.perp_pip_precision}")
         return profile
 
     def symbol_to_profile(self, symbol: str) -> Optional[SpeciesProfile]:
@@ -236,15 +233,15 @@ class PokemonTranslator:
 def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
     """Build a translator seeded with the default Johto roster."""
 
-    print("DEBUG: Creating default translator profiles...")
+    # Hyperliquid uses native symbols (BTC, ETH) without "USDT" suffix
     defaults: List[SpeciesProfile] = [
         SpeciesProfile(
             display_name="Dragonite",
-            spot_symbol="BTCUSDT",
-            perp_symbol="BTCUSDT",
+            spot_symbol="BTC",
+            perp_symbol="BTC",
             element="Dragon",
             sprite="dragonite",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=1,
             size_precision=4,
             perp_pip_precision=1,
@@ -253,37 +250,37 @@ def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
         ),
         SpeciesProfile(
             display_name="Lapras",
-            spot_symbol="ETHUSDT",
-            perp_symbol="ETHUSDT",
+            spot_symbol="ETH",
+            perp_symbol="ETH",
             element="Water",
             sprite="lapras",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=2,
             size_precision=4,
-            perp_pip_precision=3,
+            perp_pip_precision=2,
             perp_size_precision=3,
             hp_scale=75.0,
         ),
         SpeciesProfile(
             display_name="Typhlosion",
-            spot_symbol="SOLUSDT",
-            perp_symbol="SOLUSDT",
+            spot_symbol="SOL",
+            perp_symbol="SOL",
             element="Fire",
             sprite="typhlosion",
-            max_leverage=125,
-            pip_precision=3,
+            max_leverage=50,
+            pip_precision=2,
             size_precision=3,
-            perp_pip_precision=4,
+            perp_pip_precision=2,
             perp_size_precision=3,
             hp_scale=50.0,
         ),
         SpeciesProfile(
             display_name="Ampharos",
-            spot_symbol="XRPUSDT",
-            perp_symbol="XRPUSDT",
+            spot_symbol="XRP",
+            perp_symbol="XRP",
             element="Electric",
             sprite="ampharos",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=4,
             size_precision=2,
             perp_pip_precision=4,
@@ -292,11 +289,11 @@ def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
         ),
         SpeciesProfile(
             display_name="Umbreon",
-            spot_symbol="DOGEUSDT",
-            perp_symbol="DOGEUSDT",
+            spot_symbol="DOGE",
+            perp_symbol="DOGE",
             element="Dark",
             sprite="umbreon",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=5,
             size_precision=2,
             perp_pip_precision=5,
@@ -305,11 +302,11 @@ def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
         ),
         SpeciesProfile(
             display_name="Gengar",
-            spot_symbol="HYPEUSDT",
-            perp_symbol="HYPEUSDT",
+            spot_symbol="HYPE",
+            perp_symbol="HYPE",
             element="Ghost",
             sprite="gengar",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=3,
             size_precision=3,
             perp_pip_precision=3,
@@ -318,50 +315,50 @@ def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
         ),
         SpeciesProfile(
             display_name="Espeon",
-            spot_symbol="AVAXUSDT",
-            perp_symbol="AVAXUSDT",
+            spot_symbol="AVAX",
+            perp_symbol="AVAX",
             element="Psychic",
             sprite="espeon",
-            max_leverage=125,
-            pip_precision=3,
+            max_leverage=50,
+            pip_precision=2,
             size_precision=3,
-            perp_pip_precision=3,
+            perp_pip_precision=2,
             perp_size_precision=3,
             hp_scale=40.0,
         ),
         SpeciesProfile(
             display_name="Scizor",
-            spot_symbol="SUIUSDT",
-            perp_symbol="SUIUSDT",
+            spot_symbol="SUI",
+            perp_symbol="SUI",
             element="Steel",
             sprite="scizor",
-            max_leverage=125,
-            pip_precision=3,
+            max_leverage=50,
+            pip_precision=4,
             size_precision=3,
-            perp_pip_precision=3,
+            perp_pip_precision=4,
             perp_size_precision=3,
             hp_scale=40.0,
         ),
         SpeciesProfile(
             display_name="Snorlax",
-            spot_symbol="BNBUSDT",
-            perp_symbol="BNBUSDT",
+            spot_symbol="BNB",
+            perp_symbol="BNB",
             element="Normal",
             sprite="snorlax",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=2,
             size_precision=4,
-            perp_pip_precision=3,
+            perp_pip_precision=2,
             perp_size_precision=3,
             hp_scale=60.0,
         ),
         SpeciesProfile(
             display_name="Heracross",
-            spot_symbol="WLDUSDT",
-            perp_symbol="WLDUSDT",
+            spot_symbol="WLD",
+            perp_symbol="WLD",
             element="Bug",
             sprite="heracross",
-            max_leverage=125,
+            max_leverage=50,
             pip_precision=3,
             size_precision=2,
             perp_pip_precision=3,
@@ -369,14 +366,6 @@ def default_translator(margin_mode: str = "crossed") -> PokemonTranslator:
             hp_scale=10.0,
         ),
     ]
-
-    # Debug: Check Umbreon profile after creation
-    umbreon_profile = None
-    for profile in defaults:
-        if profile.display_name == "Umbreon":
-            umbreon_profile = profile
-            print(f"DEBUG: Found Umbreon profile - pip_precision={profile.pip_precision}, perp_pip_precision={profile.perp_pip_precision}")
-            break
 
     translator = PokemonTranslator(defaults, margin_mode=margin_mode)
     return translator

@@ -1,15 +1,17 @@
 [project]
-name = "poke-bitget-adventure"
+name = "qwen3-arena"
 version = "0.1.0"
-description = "Kid-friendly Pokemon-themed Bitget trading adventure interface"
-authors = [{name = "Trainer Codex"}]
+description = "Qwen3 Arena - Hyperliquid trading interface with AI-powered insights"
+authors = [{name = "Qwen3 Arena Team"}]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "httpx>=0.25",
     "pydantic>=2.5",
-    "pydantic-settings>=2.0"
+    "pydantic-settings>=2.0",
+    "hyperliquid-python-sdk>=0.4.0",
+    "eth-account>=0.10.0"
 ]
 
 [project.optional-dependencies]

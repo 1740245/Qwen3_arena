@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable, List, Optional
 
 from ..adapters.bitget_client import BitgetClient
@@ -76,37 +76,45 @@ class PokemonRosterService:
             return roster
 
     def _build_profiles(self) -> List[SpeciesProfile]:
+        """
+        Build roster profiles using existing translator profiles.
+        This ensures symbols and leverage limits match what's configured for Hyperliquid.
+        """
         profiles: List[SpeciesProfile] = []
         for idx, base in enumerate(self._pinned_bases):
             skin = PINNED_SKINS[idx % len(PINNED_SKINS)]
-            symbol = f"{base}USDT"
 
-            # Check if we have an existing profile for this species to preserve precision values
+            # Use existing translator profile if it exists
             existing_profile = self._translator._profiles.get(skin.name)
 
-            profiles.append(
-                SpeciesProfile(
-                    display_name=skin.name,
-                    spot_symbol=symbol,
-                    element=skin.element,
-                    region="",
-                    sprite=skin.sprite,
-                    perp_symbol=symbol,
-                    max_leverage=125,
-                    # Preserve precision values from existing profile if available
-                    pip_precision=existing_profile.pip_precision if existing_profile else 2,
-                    size_precision=existing_profile.size_precision if existing_profile else 4,
-                    perp_pip_precision=existing_profile.perp_pip_precision if existing_profile else None,
-                    perp_size_precision=existing_profile.perp_size_precision if existing_profile else None,
-                    hp_scale=existing_profile.hp_scale if existing_profile else 100.0,
+            if existing_profile:
+                # Use the existing profile directly to preserve all configured values
+                profiles.append(existing_profile)
+            else:
+                # Fallback: create a new profile with Hyperliquid native symbol format
+                profiles.append(
+                    SpeciesProfile(
+                        display_name=skin.name,
+                        spot_symbol=base,  # Hyperliquid uses native symbols (BTC, ETH, etc.)
+                        element=skin.element,
+                        region="",
+                        sprite=skin.sprite,
+                        perp_symbol=base,  # Hyperliquid uses native symbols
+                        max_leverage=50,  # Hyperliquid default max leverage
+                        pip_precision=2,
+                        size_precision=4,
+                        perp_pip_precision=None,
+                        perp_size_precision=None,
+                        hp_scale=100.0,
+                    )
                 )
-            )
         return profiles
 
     def _as_roster_response(self, profiles: Iterable[SpeciesProfile]) -> RosterResponse:
         slots: List[SpeciesRosterSlot] = []
         for index, profile in enumerate(profiles, start=1):
-            base_token = profile.spot_symbol[:-4].upper()
+            # Hyperliquid uses native symbols (BTC, ETH) not BTCUSDT format
+            base_token = profile.spot_symbol.upper()
             quote = self._price_feed.get_price(base_token)
             slots.append(
                 SpeciesRosterSlot(
@@ -132,7 +140,7 @@ class PokemonRosterService:
                     species="Mystery Egg",
                 )
             )
-        return RosterResponse(roster=slots, last_updated=datetime.utcnow())
+        return RosterResponse(roster=slots, last_updated=datetime.now(timezone.utc))
 
     def _rebuild_maps(self, roster: RosterResponse) -> None:
         species_map: Dict[str, Dict[str, str]] = {}
@@ -151,7 +159,7 @@ class PokemonRosterService:
         self._species_map = species_map
         self._base_map = base_map
         self._symbol_map = symbol_map
-        self._last_refresh_ts = datetime.utcnow()
+        self._last_refresh_ts = datetime.now(timezone.utc)
 
     def resolve_species(self, token: str) -> str:
         normalized = (token or "").strip().lower().replace("-", "")

@@ -48,13 +48,18 @@ let latestPriceMap = new Map();
 let linkShellToastShown = false;
 let positionMode = null;
 let openOrderSpecies = new Set();
+let nextUpdateTime = null;
+let countdownIntervalId = null;
+
+const REFRESH_INTERVAL = 300000; // 5 minutes in milliseconds
+const COUNTDOWN_INTERVAL = 1000; // Update countdown every second
 
 const LOCKED_LEVEL = 20;
 
 lockEncounterLevel(LOCKED_LEVEL);
 
 const defaultTrainerStatus = {
-  trainer_name: 'Trainer Gold',
+  trainer_name: 'Trader',
   party: [],
   guardrails: {
     cooldown_remaining: 0,
@@ -75,8 +80,32 @@ const defaultTrainerStatus = {
   positionMode: null,
 };
 
+function startCountdownTimer() {
+  nextUpdateTime = Date.now() + REFRESH_INTERVAL;
+
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+  }
+
+  countdownIntervalId = setInterval(() => {
+    const now = Date.now();
+    const remaining = Math.max(0, nextUpdateTime - now);
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+
+    const cooldownChip = document.getElementById('cooldown-chip');
+    if (cooldownChip) {
+      if (remaining > 0) {
+        cooldownChip.textContent = `Next Update: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+      } else {
+        cooldownChip.textContent = 'Updating...';
+      }
+    }
+  }, COUNTDOWN_INTERVAL);
+}
+
 if (stopLossInput) {
-  stopLossInput.placeholder = 'Set Anchor';
+  stopLossInput.placeholder = 'Set Price';
   stopLossInput.step = '0.01';
 }
 
@@ -298,20 +327,20 @@ function renderRoster(roster) {
               const cancelledCount = typeof response.cancelled === 'number' ? response.cancelled : 0;
               const message =
                 response.message ||
-                `Prof. Oak: Recalled ${cancelledCount} Poké Balls for ${slot.species}.`;
+                `System: Cancelled ${cancelledCount} orders for ${slot.species}.`;
               toast(message);
               openOrderSpecies.delete(slot.species);
               renderRoster(rosterSlots);
             } else {
               throw new Error(
-                (response && response.message) || "Prof. Oak: couldn't recall Poké Balls."
+                (response && response.message) || "System: couldn't cancel orders."
               );
             }
           } catch (error) {
             console.error(error);
             const message =
               (error && typeof error.message === 'string' && error.message) ||
-              "Prof. Oak: couldn't recall Poké Balls.";
+              "System: couldn't cancel orders.";
             toast(message);
           } finally {
             cancelBtn.disabled = false;
@@ -404,7 +433,7 @@ function updateSizeHelper() {
 }
 
 function renderStatus(status) {
-  trainerName.textContent = `Trainer: ${status.trainer_name}`;
+  trainerName.textContent = `Trader: ${status.trainer_name}`;
   partyMembers = status.party || [];
   guardrails = status.guardrails || {};
   const serverDemo = Boolean(status.demo_mode);
@@ -699,7 +728,7 @@ function validateForm() {
       }
     } else if (!Number.isFinite(ropeValue) || ropeValue <= 0) {
       valid = false;
-      message = 'Equip your Escape Rope before confirming.';
+      message = 'Set your stop loss before confirming.';
     }
 
     if (valid && stopLossMode === 'price') {
@@ -707,17 +736,17 @@ function validateForm() {
       if (limitPrice !== null) {
         if (isLongEntry() && ropeValue >= limitPrice) {
           valid = false;
-          message = 'Your Escape Rope must be set below your anchor point for a long.';
+          message = 'Your stop loss must be set below your entry price for a long.';
         }
         if (isShortEntry() && ropeValue <= limitPrice) {
           valid = false;
-          message = 'Your Escape Rope must be set above your anchor point for a short.';
+          message = 'Your stop loss must be set above your entry price for a short.';
         }
       }
     }
 
     if (!message && stopLossMode === 'percent') {
-      message = 'Anchors to sensor now; we’ll fine-tune after the catch.';
+      message = 'Stop loss will be set based on current price.';
     }
   } else {
     message = '';
@@ -1032,10 +1061,11 @@ async function refreshRoster() {
     rosterSlots = normalizeRosterSlots(roster?.roster || []);
     await refreshOpenOrders();
     renderRoster(rosterSlots);
-    toast('Poké Dex updated!');
+    toast('Prices updated!');
+    loadAIInsights();
   } catch (error) {
     console.error(error);
-    toast('Professor Elm: roster refresh failed.');
+    toast('System: Price refresh failed.');
   }
 }
 
@@ -1096,7 +1126,7 @@ async function hydrate() {
 
     if (linkShellState === 'offline') {
       if (!linkShellToastShown) {
-        toast('Professor Elm: link shell offline.');
+        toast('System: Exchange connection offline.');
         linkShellToastShown = true;
       }
     } else {
@@ -1119,16 +1149,18 @@ async function hydrate() {
   updateOrderControls();
   validateForm();
     await refreshPrices();
+    startCountdownTimer();
     if (!priceRefreshTimer) {
       priceRefreshTimer = setInterval(() => {
         refreshPrices().catch((error) => console.error(error));
-      }, 3000);
+        startCountdownTimer();
+      }, REFRESH_INTERVAL);
     }
     updateSizeHelper();
   } catch (error) {
     console.error(error);
     if (!linkShellToastShown) {
-      toast('Professor Elm: link shell offline.');
+      toast('System: Exchange connection offline.');
       linkShellToastShown = true;
     }
   }
@@ -1334,7 +1366,7 @@ stopLossModeButtons.forEach((button) => {
     stopLossModeButtons.forEach((btn) => btn.classList.remove('active'));
     button.classList.add('active');
     stopLossMode = button.dataset.slMode || 'price';
-    stopLossInput.placeholder = stopLossMode === 'percent' ? 'Set Distance (%)' : 'Set Anchor';
+    stopLossInput.placeholder = stopLossMode === 'percent' ? 'Set Distance (%)' : 'Set Price';
     if (stopLossMode === 'percent') {
       stopLossInput.step = '0.1';
     } else {
@@ -1349,7 +1381,7 @@ encounterForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const species = speciesSelect.value;
   if (!species) {
-    toast('Choose a Pokémon first!');
+    toast('Select an asset first!');
     return;
   }
 
@@ -1357,11 +1389,11 @@ encounterForm.addEventListener('submit', async (event) => {
     const ready = validateForm();
     if (!ready) {
       const helper = stopLossHint ? stopLossHint.textContent : '';
-      toast(helper || 'Equip your Escape Rope before confirming.');
+      toast(helper || 'Set stop loss before confirming.');
       return;
     }
     if (requiresStopLoss()) {
-      toast('Arming Escape Rope...');
+      toast('Setting stop loss...');
     }
   }
 
@@ -1407,9 +1439,10 @@ encounterForm.addEventListener('submit', async (event) => {
       },
       body: JSON.stringify(payload)
     });
-    toast(receipt.narration || `Encounter resolved with ${receipt.species}!`);
+    toast(receipt.narration || `Trade executed for ${receipt.species}!`);
     await hydrate();
     applyNormalizedReceipt(receipt);
+    loadAIInsights();
   } catch (error) {
     console.error(error);
     const message = typeof error?.message === 'string' ? error.message : '';
@@ -1417,7 +1450,7 @@ encounterForm.addEventListener('submit', async (event) => {
       toast('Switch to Hedge mode to manage sides, or close from your exchange.');
       return;
     }
-    toast(message || 'Professor Elm: adventure aborted.');
+    toast(message || 'System: Trade aborted.');
   }
 });
 
@@ -1507,3 +1540,59 @@ function lockEncounterLevel(level) {
     levelIndicator.classList.add('lv-locked');
   }
 }
+
+// AI Chat Functionality
+async function loadAIInsights() {
+  const container = document.getElementById('ai-chat-container');
+  if (!container) return;
+
+  // Generate insights based on current market data
+  const insights = [];
+
+  // Get top 3 tokens from roster with prices
+  const tokensWithPrices = rosterSlots
+    .filter(slot => slot.species && slot.price_usd && slot.status === 'occupied')
+    .slice(0, 3);
+
+  if (tokensWithPrices.length > 0) {
+    tokensWithPrices.forEach(slot => {
+      const price = formatPriceValue(slot.price_usd, slot.species);
+      insights.push({
+        timestamp: new Date().toLocaleTimeString(),
+        text: `${slot.species}: Current price at ${price} USDT. Market ${slot.element || 'stable'}.`
+      });
+    });
+  } else {
+    insights.push({
+      timestamp: new Date().toLocaleTimeString(),
+      text: 'Monitoring market conditions. Refresh prices to get latest data.'
+    });
+  }
+
+  // Add system status
+  insights.push({
+    timestamp: new Date().toLocaleTimeString(),
+    text: `System active. Next price update in ${Math.floor(REFRESH_INTERVAL / 60000)} minutes.`
+  });
+
+  container.innerHTML = insights.map(insight => `
+    <div class="ai-chat-message">
+      <span class="ai-avatar">🤖</span>
+      <div class="ai-content">
+        <p class="ai-timestamp">${insight.timestamp}</p>
+        <p class="ai-text">${insight.text}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Initialize AI chat
+const refreshAIChatBtn = document.getElementById('refresh-ai-chat');
+if (refreshAIChatBtn) {
+  refreshAIChatBtn.addEventListener('click', loadAIInsights);
+}
+
+// Load AI insights after initial data load
+setTimeout(() => {
+  loadAIInsights();
+}, 2000);
