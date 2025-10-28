@@ -526,8 +526,20 @@ class HyperliquidClient:
                     order_symbol = order.get("coin", "")
 
                     # Filter by symbol if provided
-                    if symbol and order_symbol != symbol:
-                        continue
+                    # Normalize both to base format (strip -USD suffix) for comparison
+                    if symbol:
+                        # Normalize filter symbol: "BTC-USD" -> "BTC"
+                        normalized_filter = symbol.upper()
+                        if normalized_filter.endswith("-USD"):
+                            normalized_filter = normalized_filter[:-4]
+
+                        # Normalize order symbol: "BTC-USD" -> "BTC"
+                        normalized_order = order_symbol.upper()
+                        if normalized_order.endswith("-USD"):
+                            normalized_order = normalized_order[:-4]
+
+                        if normalized_order != normalized_filter:
+                            continue
 
                     # BUG FIX #26: Improve side mapping with explicit checks
                     # Hyperliquid uses "B" for buy, "A" for ask/sell

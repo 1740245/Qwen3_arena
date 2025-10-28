@@ -779,6 +779,12 @@ class AdventureOrderService:
             if numeric is not None:
                 return numeric
 
+        # Hyperliquid fallback: size * entryPrice (position value)
+        size = self._to_float(entry.get("size"))
+        entry_price = self._to_float(entry.get("entryPrice") or entry.get("entryPx"))
+        if size is not None and entry_price is not None:
+            return abs(size * entry_price)
+
         return None
 
     @staticmethod
@@ -2182,6 +2188,10 @@ class AdventureOrderService:
         if not isinstance(symbol_raw, str) or not symbol_raw.strip():
             return None
         symbol = symbol_raw.upper().strip()
+
+        # Normalize Hyperliquid symbol format (BTC-USD -> BTC) for translator
+        if symbol.endswith("-USD"):
+            symbol = symbol[:-4]
 
         size = self._to_float(
             entry.get("size")
