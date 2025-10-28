@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid  # BUG FIX #11: Move uuid import to module level
 from collections import deque
 from typing import Any, Dict, List, Optional
 
@@ -71,7 +72,8 @@ class HyperliquidClient:
         """Hyperliquid always uses hedge mode."""
         return "hedge"
 
-    async def get_position_mode(self, product_type: str = "perp") -> Optional[str]:
+    # BUG FIX #7: No need for async since this just returns a constant
+    def get_position_mode(self, product_type: str = "perp") -> Optional[str]:
         """Get position mode. Hyperliquid always uses hedge mode."""
         return "hedge"
 
@@ -214,16 +216,19 @@ class HyperliquidClient:
                     if szi == 0:
                         continue
 
+                    # BUG FIX #5: Convert all numeric fields to strings for consistency
+                    # BUG FIX #9: Optimize nested dict access by storing in variable
+                    leverage_data = position_data.get("leverage", {})
                     positions.append({
                         "symbol": position_data.get("coin", ""),
                         "holdSide": "long" if szi > 0 else "short",
                         "size": str(abs(szi)),
-                        "entryPrice": position_data.get("entryPx", "0"),
-                        "markPrice": position_data.get("markPx", "0"),
-                        "liquidationPrice": position_data.get("liquidationPx", "0"),
-                        "unrealizedPL": position_data.get("unrealizedPnl", "0"),
-                        "leverage": position_data.get("leverage", {}).get("value", "1"),
-                        "marginMode": position_data.get("leverage", {}).get("type", "cross"),
+                        "entryPrice": str(position_data.get("entryPx", "0")),
+                        "markPrice": str(position_data.get("markPx", "0")),
+                        "liquidationPrice": str(position_data.get("liquidationPx", "0")),
+                        "unrealizedPL": str(position_data.get("unrealizedPnl", "0")),
+                        "leverage": str(leverage_data.get("value", "1")),
+                        "marginMode": leverage_data.get("type", "cross"),
                     })
 
             return self._wrap_data(positions)
@@ -265,6 +270,7 @@ class HyperliquidClient:
             if size <= 0:
                 raise ValueError(f"Order size must be positive, got {size}")
 
+            # BUG FIX #10: Verify None handling for market orders
             # For limit orders, price is required
             if order_type == "limit":
                 if "price" not in payload or payload["price"] is None:
@@ -273,6 +279,8 @@ class HyperliquidClient:
                 if limit_px <= 0:
                     raise ValueError(f"Limit price must be positive, got {limit_px}")
             else:
+                # Market orders: SDK accepts None for limit_px when order_type="market"
+                # The SDK will execute at current market price
                 limit_px = None
 
             order_request = {
@@ -390,25 +398,38 @@ class HyperliquidClient:
             symbol = payload["symbol"]
             trigger_price = float(payload.get("triggerPrice", 0))
             size = float(payload.get("size", 0))
+
+            # BUG FIX #2: Validate required fields
+            if trigger_price <= 0:
+                raise ValueError(f"Invalid triggerPrice: {trigger_price} (must be > 0)")
+            if size <= 0:
+                raise ValueError(f"Invalid size: {size} (must be > 0)")
+
             limit_price = float(payload.get("price", trigger_price))
 
-            # Determine order side for stop-loss
+            # BUG FIX #4: Determine order side for stop-loss with explicit validation
             # If 'side' is explicitly provided, use it
             # Otherwise, derive from 'holdSide': long position → sell to close, short position → buy to close
             if "side" in payload:
-                is_buy = payload["side"] == "buy"
+                side_value = payload["side"]
+                if side_value not in ("buy", "sell"):
+                    raise ValueError(f"Invalid side value: {side_value} (must be 'buy' or 'sell')")
+                is_buy = side_value == "buy"
             elif "holdSide" in payload:
+                hold_side = payload["holdSide"]
+                if hold_side not in ("long", "short"):
+                    raise ValueError(f"Invalid holdSide value: {hold_side} (must be 'long' or 'short')")
                 # Stop-loss closes position: long→sell, short→buy
-                is_buy = payload["holdSide"] == "short"
+                is_buy = hold_side == "short"
             else:
-                # Default to sell if no side information
-                is_buy = False
+                # No side information provided - cannot determine direction
+                raise ValueError("Either 'side' or 'holdSide' is required for stop-loss orders")
 
-            # Hyperliquid trigger order format
+            # BUG FIX #1: Hyperliquid trigger order format requires triggerPx as STRING
             # For stop-loss: trigger activates when price goes against position
             order_type = {
                 "trigger": {
-                    "triggerPx": trigger_price,
+                    "triggerPx": str(trigger_price),  # MUST be string, not float
                     "isMarket": True,  # Execute as market order when triggered
                     "tpsl": "sl"  # Mark as stop-loss
                 }
@@ -510,9 +531,10 @@ class HyperliquidClient:
             logger.info("Cancelled all orders for %s", symbol)
 
             # Hyperliquid SDK returns {"status": "ok", "response": {"type": "cancel", "data": {"statuses": [...]}}}
+            # BUG FIX #3: Check result.get("ok") not result.get("status")
             cancelled_count = 0
             if isinstance(result, dict):
-                if result.get("status") == "ok":
+                if result.get("ok"):
                     response_data = result.get("response", {})
                     if isinstance(response_data, dict):
                         data = response_data.get("data", {})
@@ -530,9 +552,10 @@ class HyperliquidClient:
 
         except Exception as exc:
             logger.error("Failed to cancel orders: %s", exc)
+            # BUG FIX #13: Use standard error code format
             return {
                 "ok": False,
-                "code": "error",
+                "code": "50000",
                 "msg": str(exc),
                 "symbol": symbol,
             }
@@ -575,8 +598,8 @@ class HyperliquidClient:
 
             logger.info("Cancelled stop-loss: %s order=%s", symbol, order_id)
 
-            # Parse response
-            if isinstance(result, dict) and result.get("status") == "ok":
+            # BUG FIX #3: Parse response using result.get("ok") not result.get("status")
+            if isinstance(result, dict) and result.get("ok"):
                 return {
                     "ok": True,
                     "code": "00000",
@@ -584,18 +607,20 @@ class HyperliquidClient:
                     "orderId": str(order_id),
                 }
 
+            # BUG FIX #13: Use standard error code format
             return {
                 "ok": False,
-                "code": "error",
+                "code": "50000",
                 "msg": str(result),
                 "orderId": str(order_id),
             }
 
         except Exception as exc:
             logger.error("Failed to cancel stop-loss: %s", exc)
+            # BUG FIX #13: Use standard error code format
             return {
                 "ok": False,
-                "code": "error",
+                "code": "50000",
                 "msg": str(exc),
                 "orderId": payload.get("orderId") or payload.get("planId", ""),
             }
@@ -639,8 +664,8 @@ class HyperliquidClient:
 
             logger.info("Cancelled plan order: %s order=%s", symbol, order_id_int)
 
-            # Parse response
-            if isinstance(result, dict) and result.get("status") == "ok":
+            # BUG FIX #3: Parse response using result.get("ok") not result.get("status")
+            if isinstance(result, dict) and result.get("ok"):
                 return {
                     "ok": True,
                     "code": "00000",
@@ -648,18 +673,20 @@ class HyperliquidClient:
                     "orderId": str(order_id_int),
                 }
 
+            # BUG FIX #13: Use standard error code format
             return {
                 "ok": False,
-                "code": "error",
+                "code": "50000",
                 "msg": str(result),
                 "orderId": str(order_id_int),
             }
 
         except Exception as exc:
             logger.error("Failed to cancel plan order: %s", exc)
+            # BUG FIX #13: Use standard error code format
             return {
                 "ok": False,
-                "code": "error",
+                "code": "50000",
                 "msg": str(exc),
                 "orderId": order_id or "",
             }
@@ -715,7 +742,22 @@ class HyperliquidClient:
 
     @staticmethod
     def _wrap_data(data: Any) -> Dict[str, Any]:
-        """Wrap data in standard response format."""
+        """
+        Wrap data in standard response format.
+
+        BUG FIX #12: Document response structure.
+
+        Returns:
+            {
+                "ok": True,           # Success flag
+                "code": "00000",      # Error code (00000 = success)
+                "msg": "",            # Message (empty on success)
+                "raw": {"data": ...}, # Raw data wrapped
+                "data_obj": {...},    # Data as dict (or None)
+                "data_list": [...],   # Data as list (or [data])
+                "data": ...           # Original data
+            }
+        """
         return {
             "ok": True,
             "code": "00000",
@@ -729,8 +771,7 @@ class HyperliquidClient:
     @staticmethod
     def _simulate_order(payload: Dict[str, Any], *, route: str) -> Dict[str, Any]:
         """Simulate an order in demo mode."""
-        import uuid
-
+        # BUG FIX #6: Use correct field name 'holdSide' not 'posSide'
         data = {
             "orderId": str(uuid.uuid4()),
             "status": "filled",
@@ -738,7 +779,7 @@ class HyperliquidClient:
             "route": route,
             "price": payload.get("price"),
             "size": payload.get("size"),
-            "holdSide": payload.get("posSide"),
+            "holdSide": payload.get("holdSide"),
         }
         response = HyperliquidClient._wrap_data(data)
         response["msg"] = "Simulated order."

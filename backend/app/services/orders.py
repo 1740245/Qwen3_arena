@@ -1797,7 +1797,8 @@ class AdventureOrderService:
             badge=badge,
             payload={"species": order.species, "demo": is_demo},
         )
-        self._last_encounter_at = datetime.utcnow()
+        # BUG FIX #8: Replace deprecated datetime.utcnow() with datetime.now(timezone.utc)
+        self._last_encounter_at = datetime.now(timezone.utc)
 
         return AdventureOrderReceipt(
             adventure_id=str(uuid.uuid4()),
