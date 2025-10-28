@@ -595,22 +595,29 @@ class HyperliquidClient:
             logger.info("Cancelled all orders for %s", symbol)
 
             # BUG FIX #20: Hyperliquid SDK returns {"status": "ok", "response": ...} for cancel_all_orders
-            # But after SDK processing, the response structure uses "ok" field for consistency
-            # BUG FIX #3: Check result.get("ok") not result.get("status")
+            # Check actual response status before claiming success
             cancelled_count = 0
+            is_success = False
+
             if isinstance(result, dict):
-                if result.get("status") == "ok":
+                status = result.get("status")
+                if status == "ok":
+                    is_success = True
                     response_data = result.get("response", {})
                     if isinstance(response_data, dict):
                         data = response_data.get("data", {})
                         if isinstance(data, dict):
                             statuses = data.get("statuses", [])
                             cancelled_count = len(statuses) if isinstance(statuses, list) else 0
+                else:
+                    # Response exists but status != "ok" → rejection
+                    error_msg = result.get("response", "Unknown error")
+                    logger.warning("Cancel orders rejected for %s: %s", symbol, error_msg)
 
             return {
-                "ok": True,
-                "code": "00000",
-                "msg": "Orders cancelled",
+                "ok": is_success,
+                "code": "00000" if is_success else "50001",
+                "msg": "Orders cancelled" if is_success else result.get("response", "Cancel rejected by exchange"),
                 "symbol": symbol,
                 "cancelled": cancelled_count,
             }

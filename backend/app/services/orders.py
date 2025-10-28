@@ -715,6 +715,10 @@ class AdventureOrderService:
                 continue
             symbol = symbol.upper()
 
+            # Normalize Hyperliquid symbol format (BTC-USD -> BTC) for translator
+            if symbol.endswith("-USD"):
+                symbol = symbol[:-4]
+
             amount_value = self._pick_party_amount(entry)
             amount_usdt = abs(amount_value) if amount_value is not None else 0.0
 
