@@ -337,7 +337,12 @@ class HyperliquidClient:
             size = abs(float(target_position.get("size", 0)))
             is_buy = target_position.get("holdSide") == "short"  # Buy to close short, sell to close long
 
-            result = await asyncio.to_thread(self._exchange.market_close, symbol)
+            # Hyperliquid SDK market_close(coin, sz=None, px=None, slippage=0.05, cloid=None)
+            result = await asyncio.to_thread(
+                self._exchange.market_close,
+                symbol,
+                sz=size
+            )
 
             logger.info("Closed position: %s size=%.4f", symbol, size)
 

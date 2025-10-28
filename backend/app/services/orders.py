@@ -39,6 +39,7 @@ class PendingEscapeRope:
     adventure_id: str
     client_oid: str
     stop_reference: str
+    embedded: bool = False  # Track if stop-loss was embedded in main order
     sensor_price: Optional[float]
     demo_mode: bool
     created_at: datetime
@@ -233,6 +234,7 @@ class AdventureOrderService:
                                 adventure_id=adventure_id,
                                 client_oid=prep.client_oid,
                                 stop_reference=stop_loss_reference,
+                                embedded=embedded_stop_loss,
                                 sensor_price=sensor_price,
                                 demo_mode=is_demo,
                                 created_at=datetime.now(timezone.utc),
@@ -1657,16 +1659,22 @@ class AdventureOrderService:
 
     async def _replace_escape_rope(self, pending: PendingEscapeRope, new_price: float) -> None:
         await self._cancel_escape_rope(pending)
+        adjustments: Dict[str, Any] = {}
         new_reference = await self._attach_stop_loss(
             pending.order,
             pending.prep,
             stop_price=new_price,
             demo_mode=pending.demo_mode,
+            adjustments=adjustments,
         )
         pending.stop_reference = new_reference
 
     async def _cancel_escape_rope(self, pending: PendingEscapeRope) -> None:
         if not pending.stop_reference:
+            return
+        # Embedded stop-losses can't be cancelled separately (they're part of main order)
+        if pending.embedded:
+            logger.debug("Skipping cancel for embedded stop-loss")
             return
         try:
             if pending.prep.route == "spot":
@@ -1751,20 +1759,7 @@ class AdventureOrderService:
 
         # Close any remaining perpetual positions for the species
         party_snapshot = await self.list_party_status(demo_mode=is_demo)
-        spot_amount = self._estimate_spot_balance(order.species, party_snapshot)
-        if spot_amount > 0:
-            sell_payload = {
-                "symbol": profile.spot_symbol,
-                "side": "sell",
-                "orderType": "market",
-                "size": self._format_size("spot", profile, spot_amount),
-            }
-            try:
-                await self._client.place_spot_order(sell_payload, demo_mode=is_demo)
-            except (httpx.HTTPStatusError, httpx.RequestError, asyncio.TimeoutError) as exc:  # pragma: no cover - network guard
-                self._handle_exchange_error(exc, context="runaway spot closing")
-            except RuntimeError as exc:  # pragma: no cover - credential guard
-                self._handle_exchange_error(exc, context="runaway spot closing")
+        # Note: Hyperliquid doesn't have spot markets, so skip spot balance closing
 
         # Refresh party snapshot post-closure to update guardrails
         await self.list_party_status(demo_mode=is_demo)
