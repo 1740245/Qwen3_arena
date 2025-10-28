@@ -12,23 +12,24 @@ from .translators import PokemonTranslator, SpeciesProfile
 
 
 @dataclass(frozen=True)
-class PokemonSkin:
+class TokenSkin:
+    """Metadata for displaying crypto tokens in the roster."""
     name: str
     element: str
     sprite: str
 
 
-PINNED_SKINS: List[PokemonSkin] = [
-    PokemonSkin("Dragonite", "Dragon", "dragonite"),
-    PokemonSkin("Lapras", "Water", "lapras"),
-    PokemonSkin("Typhlosion", "Fire", "typhlosion"),
-    PokemonSkin("Ampharos", "Electric", "ampharos"),
-    PokemonSkin("Umbreon", "Dark", "umbreon"),
-    PokemonSkin("Gengar", "Ghost", "gengar"),
-    PokemonSkin("Espeon", "Psychic", "espeon"),
-    PokemonSkin("Scizor", "Steel", "scizor"),
-    PokemonSkin("Snorlax", "Normal", "snorlax"),
-    PokemonSkin("Heracross", "Bug", "heracross"),
+PINNED_SKINS: List[TokenSkin] = [
+    TokenSkin("Bitcoin", "Layer 1", "btc"),
+    TokenSkin("Ethereum", "Layer 1", "eth"),
+    TokenSkin("Solana", "Layer 1", "sol"),
+    TokenSkin("Ripple", "Payment", "xrp"),
+    TokenSkin("Dogecoin", "Meme", "doge"),
+    TokenSkin("Hyperliquid", "DeFi", "hype"),
+    TokenSkin("Avalanche", "Layer 1", "avax"),
+    TokenSkin("Sui", "Layer 1", "sui"),
+    TokenSkin("BNB", "Exchange", "bnb"),
+    TokenSkin("Worldcoin", "AI", "wld"),
 ]
 
 

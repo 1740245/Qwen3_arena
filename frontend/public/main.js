@@ -196,21 +196,16 @@ function toast(message) {
 
 function emojiForSprite(sprite) {
   const sprites = {
-    dragonite: '🐉',
-    lapras: '🛥️',
-    typhlosion: '🔥',
-    ampharos: '⚡️',
-    umbreon: '🌙',
-    gengar: '👻',
-    espeon: '🔮',
-    scizor: '🛡️',
-    snorlax: '😴',
-    heracross: '🪲',
-    blastoise: '💧',
-    charizard: '🔥',
-    venusaur: '🌿',
-    jolteon: '⚡️',
-    gardevoir: '✨'
+    btc: '₿',
+    eth: 'Ξ',
+    sol: '◎',
+    xrp: '✕',
+    doge: '🐕',
+    hype: '🌊',
+    avax: '🔺',
+    sui: '💧',
+    bnb: '🟡',
+    wld: '🌍'
   };
   return sprites[sprite] || '❔';
 }
@@ -477,34 +472,34 @@ function formatPriceValue(price, species = null) {
   let options;
 
   // Species-specific decimal place formatting based on cryptocurrency standards
-  if (species === 'Dragonite') {
+  if (species === 'Bitcoin') {
     // Bitcoin: 1 decimal place
     options = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
-  } else if (species === 'Lapras') {
+  } else if (species === 'Ethereum') {
     // Ethereum: 2 decimal places for display
     options = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-  } else if (species === 'Typhlosion') {
+  } else if (species === 'Solana') {
     // Solana: 3 decimal places
     options = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
-  } else if (species === 'Ampharos') {
+  } else if (species === 'Ripple') {
     // XRP: 4 decimal places
     options = { minimumFractionDigits: 4, maximumFractionDigits: 4 };
-  } else if (species === 'Umbreon') {
+  } else if (species === 'Dogecoin') {
     // Dogecoin: 5 decimal places
     options = { minimumFractionDigits: 5, maximumFractionDigits: 5 };
-  } else if (species === 'Gengar') {
+  } else if (species === 'Hyperliquid') {
     // HYPE: 3 decimal places
     options = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
-  } else if (species === 'Espeon') {
+  } else if (species === 'Avalanche') {
     // AVAX: 3 decimal places
     options = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
-  } else if (species === 'Scizor') {
+  } else if (species === 'Sui') {
     // SUI: 3 decimal places
     options = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
-  } else if (species === 'Snorlax') {
+  } else if (species === 'BNB') {
     // BNB: 2 decimal places
     options = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-  } else if (species === 'Heracross') {
+  } else if (species === 'Worldcoin') {
     // WLD: 3 decimal places
     options = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
   } else if (Math.abs(numeric) >= 1) {
@@ -632,25 +627,25 @@ function updatePriceInputSteps() {
   let stepValue = '0.01'; // Default step
 
   // Set species-specific step values based on typical exchange tick sizes
-  if (species === 'Dragonite') {
+  if (species === 'Bitcoin') {
     stepValue = '0.1'; // Bitcoin: 1 decimal place
-  } else if (species === 'Lapras') {
+  } else if (species === 'Ethereum') {
     stepValue = '0.01'; // ETH: 2 decimal places
-  } else if (species === 'Typhlosion') {
+  } else if (species === 'Solana') {
     stepValue = '0.001'; // SOL: 3 decimal places
-  } else if (species === 'Ampharos') {
+  } else if (species === 'Ripple') {
     stepValue = '0.0001'; // XRP: 4 decimal places
-  } else if (species === 'Umbreon') {
+  } else if (species === 'Dogecoin') {
     stepValue = '0.00001'; // DOGE: 5 decimal places
-  } else if (species === 'Gengar') {
+  } else if (species === 'Hyperliquid') {
     stepValue = '0.001'; // HYPE: 3 decimal places
-  } else if (species === 'Espeon') {
+  } else if (species === 'Avalanche') {
     stepValue = '0.001'; // AVAX: 3 decimal places
-  } else if (species === 'Scizor') {
+  } else if (species === 'Sui') {
     stepValue = '0.001'; // SUI: 3 decimal places
-  } else if (species === 'Snorlax') {
+  } else if (species === 'BNB') {
     stepValue = '0.01'; // BNB: 2 decimal places
-  } else if (species === 'Heracross') {
+  } else if (species === 'Worldcoin') {
     stepValue = '0.001'; // WLD: 3 decimal places
   }
 
@@ -686,7 +681,7 @@ function isLongEntry() {
 }
 
 function isShortEntry() {
-  return actionInput.value === 'release_pokemon' && isPerpLevel();
+  return actionInput.value === 'close_position' && isPerpLevel();
 }
 
 function requiresStopLoss() {
